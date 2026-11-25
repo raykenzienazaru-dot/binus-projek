@@ -223,6 +223,32 @@ String extractCleanJson(const String &rawBody, bool isChunked) {
   return body;
 }
 
+const char* wifiStatusToText(wl_status_t st) {
+  switch (st) {
+    case WL_NO_SSID_AVAIL:   return "NO_SSID_AVAIL (Cek band 2.4GHz vs 5GHz)";
+    case WL_CONNECTED:       return "CONNECTED";
+    case WL_CONNECT_FAILED:  return "CONNECT_FAILED (Password/WPA3 ditolak)";
+    case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+    case WL_DISCONNECTED:    return "DISCONNECTED";
+    default:                 return "CONNECTING/OTHER";
+  }
+}
+
+void printWifiScanDiagnostics() {
+  Serial.printf("[WiFi DIAG] Status=%d (%s)\n", (int)WiFi.status(), wifiStatusToText(WiFi.status()));
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+    Serial.println("[WiFi DIAG] Tidak ada AP 2.4 GHz terdeteksi!");
+  } else {
+    for (int i = 0; i < n; i++) {
+      Serial.printf("  [%d] '%s' (len=%d, RSSI=%d dBm, Ch=%d, Auth=%d)\n",
+                    i + 1, WiFi.SSID(i).c_str(), WiFi.SSID(i).length(),
+                    WiFi.RSSI(i), WiFi.channel(i), (int)WiFi.encryptionType(i));
+    }
+  }
+  WiFi.scanDelete();
+}
+
 void ensureWiFiConnected() {
   if (WiFi.status() == WL_CONNECTED) return;
 
@@ -230,7 +256,8 @@ void ensureWiFiConnected() {
   if (now - lastWifiAttemptTime < WIFI_RECONNECT_INTERVAL_MS) return;
   lastWifiAttemptTime = now;
 
-  Serial.printf("[WiFi] Reconnecting ke SSID '%s'...\n", WIFI_SSID);
+  Serial.printf("[WiFi] Reconnecting ke SSID '%s' (status=%d: %s)...\n",
+                WIFI_SSID, (int)WiFi.status(), wifiStatusToText(WiFi.status()));
   WiFi.disconnect(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
@@ -422,23 +449,30 @@ void setup() {
 
   initCamera();
 
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true, true);
+  delay(100);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("[WiFi] Menghubungkan ke '%s'", WIFI_SSID);
+  Serial.printf("[WiFi] Menghubungkan ke '%s' (len=%d)", WIFI_SSID, strlen(WIFI_SSID));
 
   uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startMs < 10000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startMs < 12000) {
     delay(250);
     Serial.print(".");
   }
   Serial.println();
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[WiFi OK] IP: %s | Channel: %d\n", WiFi.localIP().toString().c_str(), WiFi.channel());
+    Serial.printf("[WiFi OK] IP: %s | Channel: %d | RSSI: %d dBm\n",
+                  WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.RSSI());
   } else {
-    Serial.println("[WiFi WARN] Belum terhubung saat boot, auto-reconnect aktif di loop.");
+    Serial.println("[WiFi WARN] Belum terhubung saat boot, diagnosa scan 2.4 GHz:");
+    printWifiScanDiagnostics();
   }
+  lastWifiAttemptTime = millis();
 
   initESPNow();
 }

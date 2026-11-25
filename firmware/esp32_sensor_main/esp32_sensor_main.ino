@@ -797,6 +797,42 @@ void handleFireModeStaged() {
 // ======================================================
 // 11. KONEKSI WIFI & SETUP
 // ======================================================
+const char* wifiStatusToText(wl_status_t st) {
+  switch (st) {
+    case WL_IDLE_STATUS:     return "IDLE";
+    case WL_NO_SSID_AVAIL:   return "NO_SSID_AVAIL (SSID '.' tidak terlihat - cek 2.4GHz vs 5GHz)";
+    case WL_SCAN_COMPLETED:  return "SCAN_COMPLETED";
+    case WL_CONNECTED:       return "CONNECTED";
+    case WL_CONNECT_FAILED:  return "CONNECT_FAILED (Password salah / ditolak WPA3/PMF)";
+    case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+    case WL_DISCONNECTED:    return "DISCONNECTED (Handshake gagal / Timeout)";
+    default:                 return "UNKNOWN";
+  }
+}
+
+void printWifiScanDiagnostics() {
+  Serial.printf("[WiFi DIAG] Status=%d (%s)\n", (int)WiFi.status(), wifiStatusToText(WiFi.status()));
+  Serial.println("[WiFi DIAG] Memindai jaringan Wi-Fi 2.4 GHz di sekitar...");
+  int n = WiFi.scanNetworks();
+  if (n <= 0) {
+    Serial.println("[WiFi DIAG] Tidak ada Wi-Fi 2.4 GHz yang terdeteksi! (Pastikan Hotspot HP aktif di band 2.4 GHz, bukan 5 GHz).");
+  } else {
+    bool foundTarget = false;
+    for (int i = 0; i < n; i++) {
+      String foundSsid = WiFi.SSID(i);
+      if (foundSsid == WIFI_SSID) foundTarget = true;
+      Serial.printf("  [%d] '%s' (len=%d, RSSI=%d dBm, Ch=%d, Auth=%d)\n",
+                    i + 1, foundSsid.c_str(), foundSsid.length(),
+                    WiFi.RSSI(i), WiFi.channel(i), (int)WiFi.encryptionType(i));
+    }
+    if (!foundTarget) {
+      Serial.printf("[WiFi DIAG] Target SSID '%s' (len=%d) TIDAK ADA di hasil scan 2.4 GHz! Cek band 2.4 GHz atau spasi tersembunyi di nama SSID.\n",
+                    WIFI_SSID, strlen(WIFI_SSID));
+    }
+  }
+  WiFi.scanDelete();
+}
+
 void ensureWiFiConnected() {
   if (WiFi.status() == WL_CONNECTED) return;
 
@@ -804,7 +840,8 @@ void ensureWiFiConnected() {
   if (now - lastWifiAttempt < WIFI_RETRY_INTERVAL_MS) return;
   lastWifiAttempt = now;
 
-  Serial.printf("[WiFi] Menghubungkan ulang ke SSID '%s'...\n", WIFI_SSID);
+  Serial.printf("[WiFi] Menghubungkan ulang ke SSID '%s' (status=%d: %s)...\n",
+                WIFI_SSID, (int)WiFi.status(), wifiStatusToText(WiFi.status()));
   WiFi.disconnect(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
@@ -861,25 +898,31 @@ void setup() {
 
   dht.begin();
 
-  // Wi-Fi Station + AP Mode (wajib untuk MQTT Cloud + ESP-NOW sekaligus)
-  WiFi.mode(WIFI_AP_STA);
+  // Wi-Fi Station Mode murni agar asosiasi & scan 2.4 GHz stabil (ESP-NOW aktif bersama AP)
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true, true);
+  delay(100);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("[WiFi] Menghubungkan ke '%s'", WIFI_SSID);
+  Serial.printf("[WiFi] Menghubungkan ke '%s' (len=%d)", WIFI_SSID, strlen(WIFI_SSID));
 
   unsigned long wifiWaitStart = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - wifiWaitStart < 8000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiWaitStart < 12000) {
     delay(250);
     Serial.print(".");
   }
   Serial.println();
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[WiFi OK] IP: %s | Channel: %d | MAC: %s\n",
-                  WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.macAddress().c_str());
+    Serial.printf("[WiFi OK] IP: %s | Channel: %d | RSSI: %d dBm | MAC: %s\n",
+                  WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.RSSI(), WiFi.macAddress().c_str());
   } else {
-    Serial.println("[WiFi WARN] Belum terhubung saat boot, auto-reconnect akan berjalan di loop.");
+    Serial.println("[WiFi WARN] Belum terhubung saat boot, menjalankan diagnosa scan 2.4 GHz...");
+    printWifiScanDiagnostics();
   }
+  lastWifiAttempt = millis();
 
   // ESP-NOW Setup & Peer Registration ke ESP32-CAM
   if (esp_now_init() == ESP_OK) {
