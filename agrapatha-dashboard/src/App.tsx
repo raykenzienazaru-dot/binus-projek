@@ -108,12 +108,13 @@ const LiveClockBadge: React.FC<{ isGlassy: boolean }> = React.memo(({ isGlassy }
 
   return (
     <span
-      className={`hidden sm:inline-block px-3 py-1.5 rounded-xl border text-xs font-medium text-[#F1D2A1] font-tabular shadow-xs transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm cursor-default select-none ${isGlassy
-          ? 'bg-[#5E682B]/85 backdrop-blur-md border-[#869440]'
-          : 'bg-[#5E682B] border-[#869440]'
+      className={`hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold text-emerald-100 font-tabular shadow-xs transition-all duration-200 cursor-default select-none whitespace-nowrap shrink-0 ${isGlassy
+          ? 'bg-white/10 backdrop-blur-md border-white/20'
+          : 'bg-white/10 border-white/15'
         }`}
     >
-      {clockText}
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+      <span>{clockText}</span>
     </span>
   );
 });
@@ -1222,9 +1223,9 @@ export const App: React.FC = () => {
   const renderSidebarContent = (isMobile = false) => (
     <div className="flex flex-col justify-between h-full p-4 select-none">
       {/* Brand Box */}
-      <div className="flex items-center justify-between pb-3.5 mb-3 border-b border-[#5E682B] shrink-0">
+      <div className="flex items-center justify-between pb-3.5 mb-3 border-b border-emerald-400/20 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#5E682B] border border-[#869440] flex items-center justify-center shadow-xs shrink-0 p-1 overflow-hidden">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shadow-xs shrink-0 p-1 overflow-hidden">
             <img
               src="/agrapatha-logo.png"
               alt="Logo AGRAPATHA"
@@ -1232,18 +1233,18 @@ export const App: React.FC = () => {
             />
           </div>
           <div className="min-w-0">
-            <span className="text-xs font-bold text-white tracking-wider uppercase block font-display truncate">
+            <span className="text-sm font-extrabold text-white tracking-wide uppercase block font-display truncate">
               AGRAPATHA
             </span>
-            <span className="text-[10px] text-[#F1D2A1]/90 block truncate font-medium">
-              Edge AI Forest &amp; Botanical
+            <span className="text-[11px] text-emerald-200/90 block truncate font-medium">
+              Smart Forest &amp; Robotics
             </span>
           </div>
         </div>
         {isMobile && (
           <button
             onClick={() => setMobileMenuOpen(false)}
-            className="text-[#F1D2A1] hover:text-white w-9 h-9 flex items-center justify-center rounded-lg text-base shrink-0 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1]"
+            className="text-emerald-100 hover:text-white hover:bg-white/10 w-9 h-9 flex items-center justify-center rounded-lg text-base shrink-0 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300"
             aria-label="Tutup navigasi"
           >
             <span aria-hidden="true">✕</span>
@@ -1254,9 +1255,9 @@ export const App: React.FC = () => {
       {/* Middle Scrollable Section */}
       <div className="flex-1 overflow-y-auto min-h-0 flora-sidebar-scroll pr-1 space-y-5">
         {/* Primary Dashboards & Models */}
-        <nav aria-label="Primary Dashboards &amp; Models" className="space-y-1">
-          <span className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#F1D2A1]/80 block mb-2">
-            Primary Views &amp; Models
+        <nav aria-label="Primary Dashboards &amp; Models" className="space-y-1.5">
+          <span className="px-2.5 text-[11px] font-bold uppercase tracking-wider text-emerald-200/80 block mb-2">
+            Views &amp; AI Models
           </span>
 
           {/* Dashboard 1 with Collapsible Sub-Menus */}
@@ -1269,24 +1270,24 @@ export const App: React.FC = () => {
                   setCurrentTab('overview');
                 }
               }}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${isDashboard1Active
-                  ? 'bg-[#5E682B] text-white shadow-xs border-[#869440]'
-                  : 'text-[#F1D2A1]/90 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${isDashboard1Active
+                  ? 'bg-emerald-500/20 text-white shadow-xs border-emerald-400/45'
+                  : 'text-emerald-100/90 border-transparent hover:bg-white/10 hover:text-white'
                 }`}
               aria-expanded={isDashboard1Open}
               aria-label="Toggle Dashboard 1 Sub Menu"
             >
               <span className="flex items-center gap-2 truncate">
-                <LayoutGrid size={14} className="shrink-0 text-[#F1D2A1]" />
+                <LayoutGrid size={15} className="shrink-0 text-amber-300" />
                 <span className="truncate">Dashboard 1</span>
               </span>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-[#EAD39D] text-[#2C2922] border border-[#D6BC7C] font-mono">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-amber-300 text-[#0D2E27] font-mono">
                   3-MODEL
                 </span>
                 <ChevronDown
                   size={14}
-                  className={`text-[#F1D2A1] transition-transform duration-200 ${isDashboard1Open ? 'rotate-0' : '-rotate-90'
+                  className={`text-emerald-200 transition-transform duration-200 ${isDashboard1Open ? 'rotate-0' : '-rotate-90'
                     }`}
                 />
               </div>
@@ -1294,7 +1295,7 @@ export const App: React.FC = () => {
 
             {/* Sub Menu Items: Overview, Model 1, Model 2, Model 3 */}
             {isDashboard1Open && (
-              <div className="ml-3 pl-2.5 border-l-2 border-[#5E682B] space-y-1 pt-1 pb-1 transition-all">
+              <div className="ml-3 pl-2.5 border-l-2 border-emerald-400/30 space-y-1 pt-1 pb-1 transition-all">
                 {/* Sub Menu 0: Overview */}
                 <button
                   type="button"
@@ -1302,16 +1303,16 @@ export const App: React.FC = () => {
                     setCurrentTab('overview');
                     if (isMobile) setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${currentTab === 'overview'
-                      ? 'bg-[#5E682B] text-white shadow-xs font-bold border-[#869440]'
-                      : 'text-[#F1D2A1]/85 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'overview'
+                      ? 'bg-white/15 text-white shadow-xs font-bold border-emerald-300/40'
+                      : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
                     }`}
                 >
                   <span className="flex items-center gap-2 truncate">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#F1D2A1] shadow-[0_0_6px_#F1D2A1]" />
-                    <span className="truncate">Overview (Ringkasan)</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                    <span className="truncate">Overview</span>
                   </span>
-                  <span className="text-[8px] font-mono uppercase px-1 py-0.5 rounded bg-[#2C2922] text-[#F1D2A1]">
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-200">
                     ALL
                   </span>
                 </button>
@@ -1323,16 +1324,16 @@ export const App: React.FC = () => {
                     setCurrentTab('model_hazard');
                     if (isMobile) setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${currentTab === 'model_hazard'
-                      ? 'bg-[#5E682B] text-white shadow-xs font-bold border-l-2 border-l-[#DC2626] border-y-[#869440] border-r-[#869440]'
-                      : 'text-[#F1D2A1]/85 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'model_hazard'
+                      ? 'bg-white/15 text-white shadow-xs font-bold border-l-2 border-l-rose-400 border-y-emerald-300/30 border-r-emerald-300/30'
+                      : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
                     }`}
                 >
                   <span className="flex items-center gap-2 truncate">
-                    <Flame size={13} className="shrink-0 text-[#DC2626]" />
-                    <span className="truncate">Model 1: Forest Fire</span>
+                    <Flame size={14} className="shrink-0 text-rose-400" />
+                    <span className="truncate">Model 1: Hazard</span>
                   </span>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${!hazardResult ? 'bg-[#2C2922] text-[#F1D2A1]' : hazardResult.riskLevel === 'HIGH' ? 'bg-[#DC2626] text-white' : hazardResult.riskLevel === 'MODERATE' ? 'bg-[#D97706] text-white' : 'bg-[#2C2922] text-[#F1D2A1]'
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${!hazardResult ? 'bg-emerald-950/70 text-emerald-200' : hazardResult.riskLevel === 'HIGH' ? 'bg-rose-500 text-white' : hazardResult.riskLevel === 'MODERATE' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
                     }`}>
                     {hazardResult ? hazardResult.riskLevel : 'STANDBY'}
                   </span>
@@ -1345,16 +1346,16 @@ export const App: React.FC = () => {
                     setCurrentTab('model_botanical');
                     if (isMobile) setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${currentTab === 'model_botanical'
-                      ? 'bg-[#5E682B] text-white shadow-xs font-bold border-l-2 border-l-[#F1D2A1] border-y-[#869440] border-r-[#869440]'
-                      : 'text-[#F1D2A1]/85 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'model_botanical'
+                      ? 'bg-white/15 text-white shadow-xs font-bold border-l-2 border-l-emerald-400 border-y-emerald-300/30 border-r-emerald-300/30'
+                      : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
                     }`}
                 >
                   <span className="flex items-center gap-2 truncate">
-                    <Leaf size={13} className="shrink-0 text-[#F1D2A1]" />
+                    <Leaf size={14} className="shrink-0 text-emerald-300" />
                     <span className="truncate">Model 2: Botanical</span>
                   </span>
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${floraResult ? 'bg-[#2C2922] text-[#F1D2A1]' : 'bg-[#2C2922] text-[#F1D2A1]'}`}>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-emerald-950/70 text-emerald-200">
                     {floraResult ? floraResult.sensorRisk.toUpperCase() : 'STANDBY'}
                   </span>
                 </button>
@@ -1366,16 +1367,16 @@ export const App: React.FC = () => {
                     setCurrentTab('model_vision');
                     if (isMobile) setMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${currentTab === 'model_vision'
-                      ? 'bg-[#5E682B] text-white shadow-xs font-bold border-l-2 border-l-[#4D6A75] border-y-[#869440] border-r-[#869440]'
-                      : 'text-[#F1D2A1]/85 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'model_vision'
+                      ? 'bg-white/15 text-white shadow-xs font-bold border-l-2 border-l-sky-400 border-y-emerald-300/30 border-r-emerald-300/30'
+                      : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
                     }`}
                 >
                   <span className="flex items-center gap-2 truncate">
-                    <Camera size={13} className="shrink-0 text-[#4D6A75]" />
-                    <span className="truncate">Model 3: Computer Vision</span>
+                    <Camera size={14} className="shrink-0 text-sky-300" />
+                    <span className="truncate">Model 3: Vision</span>
                   </span>
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-[#4D6A75] text-white">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-sky-500/80 text-white">
                     AI.OPT
                   </span>
                 </button>
@@ -1388,21 +1389,21 @@ export const App: React.FC = () => {
               setCurrentTab('all');
               if (isMobile) setMobileMenuOpen(false);
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${currentTab === 'all'
-                ? 'bg-[#2C2922] text-[#F1D2A1] shadow-xs border-[#2C2922]'
-                : 'text-[#F1D2A1]/80 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'all'
+                ? 'bg-amber-300 text-[#0D2E27] shadow-xs border-amber-200 font-bold'
+                : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
               }`}
           >
             <span className="flex items-center gap-2 truncate">
-              <Layers size={13} className="shrink-0" />
+              <Layers size={14} className="shrink-0" />
               <span className="truncate">All Views (Combined)</span>
             </span>
           </button>
         </nav>
 
         {/* Navigation Links */}
-        <nav aria-label="Console Sections" className="space-y-1 pt-3 border-t border-[#5E682B]">
-          <span className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#F1D2A1]/80 block mb-2">
+        <nav aria-label="Console Sections" className="space-y-1 pt-3 border-t border-emerald-400/20">
+          <span className="px-2.5 text-[11px] font-bold uppercase tracking-wider text-emerald-200/80 block mb-2">
             Section Quick Links
           </span>
           {navItems.map((item) => {
@@ -1415,15 +1416,15 @@ export const App: React.FC = () => {
                   if (isMobile) setMobileMenuOpen(false);
                 }}
                 aria-current={isActive ? 'location' : undefined}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] border ${isActive
-                    ? 'bg-[#5E682B] text-white shadow-xs font-bold border-[#869440]'
-                    : 'text-[#F1D2A1]/90 border-transparent hover:bg-[#5E682B]/60 hover:text-white'
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${isActive
+                    ? 'bg-emerald-500/20 text-white shadow-xs font-bold border-emerald-400/45'
+                    : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
                   }`}
               >
                 <span className="truncate">{item.label}</span>
                 {item.badge && (
                   <span
-                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ml-1.5 ${isActive ? 'bg-[#2C2922] text-[#F1D2A1]' : 'bg-[#2C2922]/80 text-[#F1D2A1]'
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ml-1.5 ${isActive ? 'bg-amber-300 text-[#0D2E27]' : 'bg-emerald-950/70 text-emerald-200'
                       }`}
                   >
                     {item.badge}
@@ -1436,21 +1437,21 @@ export const App: React.FC = () => {
       </div>
 
       {/* Bottom System Channel Status */}
-      <div className="bg-[#5E682B] p-3 rounded-xl border border-[#869440] flex items-center gap-2.5 mt-3 shrink-0">
-        <span className="w-2 h-2 rounded-full shrink-0 bg-[#F1D2A1] shadow-[0_0_6px_rgba(241,210,161,0.8)] animate-pulse" />
+      <div className="bg-white/10 p-3 rounded-xl border border-emerald-400/25 flex items-center gap-2.5 mt-3 shrink-0">
+        <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
         <div className="min-w-0 flex-1">
-          <span className="block text-[9px] text-[#F1D2A1]/80 font-semibold uppercase tracking-wider truncate">
+          <span className="block text-[10px] text-emerald-200/85 font-semibold uppercase tracking-wider truncate">
             Edge Kernel Channel
           </span>
           <div className="flex items-center justify-between gap-1 mt-0.5">
             <span className="block text-xs font-bold text-white uppercase tracking-wider truncate">
               LIVE · C HEADER AI
             </span>
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-[#EAD39D] text-[#2C2922] border border-[#D6BC7C] font-mono shrink-0">
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-amber-300 text-[#0D2E27] font-mono shrink-0">
               100 Trees
             </span>
           </div>
-          <span className="block text-[10px] text-[#F1D2A1]/80 truncate mt-0.5">
+          <span className="block text-[11px] text-emerald-200/80 truncate mt-0.5">
             model_hazard.h + grenvis_sensor
           </span>
         </div>
@@ -1459,72 +1460,68 @@ export const App: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F8F5] text-[#263A35] flex flex-col font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-[#ECF4F0] via-[#F4FAF7] to-[#E6F1F4] text-[#102A24] flex flex-col font-sans">
       {/* 3D Boot Splash Screen */}
       {viewMode === 'boot' && <FloraSplash onComplete={() => setViewMode('dashboard')} />}
 
-      {/* TOP NAVIGATION BAR (Olive Green #737F35 Theme) */}
+      {/* TOP NAVIGATION BAR (Deep Botanical Emerald · Anti-Collision Grid Layout) */}
       <header className={`sticky top-0 z-40 w-full border-b transition-all duration-300 select-none animate-navbar-slide-down ${isScrolled
-          ? 'bg-[#737F35]/95 backdrop-blur-md border-[#5E682B] shadow-lg shadow-black/25'
-          : 'bg-[#737F35] border-[#5E682B] shadow-md'
+          ? 'bg-[#0D2E27]/95 backdrop-blur-xl border-emerald-400/25 shadow-[0_10px_28px_-8px_rgba(13,46,39,0.45)]'
+          : 'bg-gradient-to-r from-[#0D2E27] via-[#134237] to-[#0E484D] border-emerald-400/20 shadow-md'
         }`}>
-        {/* Top Accent Strip - Peach #F1D2A1 with smooth shimmer animation */}
-        <div className="h-0.5 w-full animate-nav-shimmer shadow-[0_1px_8px_rgba(241,210,161,0.6)] shrink-0" />
+        {/* Top Accent Strip */}
+        <div className="h-[3px] w-full animate-nav-shimmer shadow-[0_1px_10px_rgba(52,211,153,0.5)] shrink-0" />
 
-        {/* Tier 1: Main Top Navbar Row */}
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-2.5">
+        {/* Single Clean Row with Balanced Zones & Zero Overlap */}
+        <div className="w-full max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2.5">
           <div className="flex items-center justify-between gap-3">
-            {/* Left: Mobile Toggle & Brand */}
-            <div className="flex items-center gap-3 shrink-0">
+            {/* Zone 1 (Left): Mobile Toggle & Brand Identity */}
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 shrink-0">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(true)}
-                className="lg:hidden text-[#F1D2A1] hover:text-white w-9 h-9 flex items-center justify-center rounded-xl bg-[#5E682B] border border-[#869440] text-base shrink-0 cursor-pointer hover:bg-[#525B25] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1] shadow-xs hover:shadow-sm"
+                className="lg:hidden text-emerald-100 hover:text-white w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 border border-white/15 text-base shrink-0 cursor-pointer hover:bg-white/15 active:scale-95 transition-all duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300"
                 aria-label="Buka menu navigasi"
                 aria-expanded={mobileMenuOpen}
               >
                 <span aria-hidden="true">☰</span>
               </button>
 
-              <div
-                className="flex items-center gap-2.5 group cursor-pointer"
+              <button
+                type="button"
+                className="flex items-center gap-2.5 group cursor-pointer text-left min-w-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 rounded-xl pr-1"
                 onClick={() => scrollToSection('overview')}
                 title="Kembali ke Ringkasan AGRAPATHA"
               >
-                <div className="w-9 h-9 rounded-xl bg-[#5E682B] border border-[#869440] flex items-center justify-center shadow-xs shrink-0 transition-all duration-300 group-hover:scale-105 group-hover:shadow-[0_0_10px_rgba(241,210,161,0.4)] p-1 overflow-hidden">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shadow-xs shrink-0 transition-transform duration-200 group-hover:scale-105 p-1 overflow-hidden">
                   <img
                     src="/agrapatha-logo.png"
                     alt="Logo AGRAPATHA"
-                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110 drop-shadow-sm"
+                    className="w-full h-full object-contain drop-shadow-sm"
                   />
                 </div>
-                <div className="min-w-0">
-                  <span className="text-xs sm:text-sm font-bold text-white tracking-wider uppercase block font-display truncate transition-colors duration-200 group-hover:text-[#F1D2A1]">
+                <div className="min-w-0 leading-tight">
+                  <span className="text-sm sm:text-[15px] font-extrabold text-white tracking-wider uppercase block font-display whitespace-nowrap transition-colors duration-200 group-hover:text-emerald-200">
                     AGRAPATHA
                   </span>
-                  <span className="text-[10px] text-[#F1D2A1]/90 font-medium block truncate">
-                    Edge AI Forest &amp; Botanical
+                  <span className="hidden xl:block text-[11px] text-emerald-200/85 font-medium whitespace-nowrap">
+                    Smart Forest Robotics &amp; AI
                   </span>
                 </div>
-              </div>
+              </button>
             </div>
 
-            {/* Middle: Primary Views & Models Tabs/Dropdown (Desktop) */}
-            <nav aria-label="Primary Views & Models" className="hidden lg:flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#F1D2A1]/80 mr-1 shrink-0">
-                Primary Views &amp; Models
-              </span>
-
-              {/* NavigationMenu for Dashboard 1 Options */}
+            {/* Zone 2 (Center): Navigation Capsule (Desktop >= lg) */}
+            <nav aria-label="Navigasi Utama Dashboard" className="hidden lg:flex items-center shrink-0">
               <NavigationMenu>
-                <NavigationMenuList>
+                <NavigationMenuList className="flex items-center gap-1.5 p-1 rounded-2xl bg-white/[0.08] border border-white/[0.14] shadow-inner">
                   <NavigationMenuItem>
                     <NavigationMenuTrigger
-                      className="h-9 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer border bg-[#5E682B] text-[#F1D2A1] border-[#869440] hover:bg-[#FAF9F5] hover:text-[#263A35] hover:border-[#DCE4E1] hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus:bg-[#FAF9F5] focus:text-[#263A35] data-[active]:bg-[#FAF9F5] data-[active]:text-[#263A35] data-[state=open]:bg-[#FAF9F5] data-[state=open]:text-[#263A35] data-[state=open]:border-[#DCE4E1] data-[state=open]:shadow-md backdrop-blur-md"
+                      className="h-9 px-3.5 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-150 cursor-pointer border bg-transparent text-emerald-50 border-transparent hover:bg-white hover:text-[#0D2E27] focus:bg-white focus:text-[#0D2E27] data-[active]:bg-white data-[active]:text-[#0D2E27] data-[state=open]:bg-white data-[state=open]:text-[#0D2E27]"
                     >
-                      <LayoutGrid size={14} className="shrink-0 mr-1.5 text-current transition-colors" />
-                      <span>Dashboard 1</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ml-1.5 mr-0.5 bg-[#EAD39D] text-[#2C2922] border border-[#D6BC7C]">
+                      <LayoutGrid size={15} className="shrink-0 mr-1.5 text-amber-300 group-data-[state=open]:text-emerald-700" />
+                      <span className="whitespace-nowrap">Dashboard Views</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase font-mono ml-2 bg-amber-300 text-[#0D2E27]">
                         {currentTab === 'model_hazard'
                           ? 'MODEL 1'
                           : currentTab === 'model_botanical'
@@ -1535,22 +1532,22 @@ export const App: React.FC = () => {
                       </span>
                     </NavigationMenuTrigger>
 
-                    <NavigationMenuContent className="p-2.5 w-64 space-y-1">
+                    <NavigationMenuContent className="p-2.5 w-68 space-y-1">
                       {/* Sub Menu 0: Overview */}
                       <NavigationMenuLink asChild>
                         <button
                           type="button"
                           onClick={() => setCurrentTab('overview')}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left border ${currentTab === 'overview'
-                              ? 'bg-[#737F35]/12 text-[#2C2922] shadow-xs font-bold border-[#737F35]/40'
-                              : 'text-[#2C2922]/80 border-transparent hover:bg-[#737F35]/10 hover:text-[#2C2922] hover:border-[#737F35]/20'
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${currentTab === 'overview'
+                              ? 'bg-emerald-50 text-[#0D2E27] shadow-xs font-bold border-emerald-300'
+                              : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
                             }`}
                         >
                           <span className="flex items-center gap-2 truncate">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#737F35] shadow-[0_0_6px_rgba(115,127,53,0.6)]" />
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
                             <span className="truncate">Overview (Ringkasan)</span>
                           </span>
-                          <span className="text-[8px] font-mono uppercase px-1 py-0.5 rounded bg-[#EAEFED] border border-[#DCE4E1] text-[#56612E]">
+                          <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
                             ALL
                           </span>
                         </button>
@@ -1561,16 +1558,16 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setCurrentTab('model_hazard')}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_hazard'
-                              ? 'bg-[#737F35]/12 text-[#2C2922] shadow-xs font-bold border-l-2 border-[#DC2626] border-y-[#DCE4E1] border-r-[#DCE4E1]'
-                              : 'text-[#2C2922]/80 border-transparent hover:bg-[#737F35]/10 hover:text-[#2C2922] hover:border-[#737F35]/20'
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_hazard'
+                              ? 'bg-rose-50 text-[#0D2E27] shadow-xs font-bold border-rose-300'
+                              : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
                             }`}
                         >
                           <span className="flex items-center gap-2 truncate">
-                            <Flame size={13} className="shrink-0 text-[#DC2626]" />
+                            <Flame size={14} className="shrink-0 text-rose-600" />
                             <span className="truncate">Model 1: Forest Fire</span>
                           </span>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 border ${!hazardResult ? 'bg-[#EAEFED] text-[#2C2922] border-[#DCE4E1]' : hazardResult.riskLevel === 'HIGH' ? 'bg-[#DC2626] text-white border-transparent' : hazardResult.riskLevel === 'MODERATE' ? 'bg-[#D97706] text-white border-transparent' : 'bg-[#56612E] text-white border-transparent'
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${!hazardResult ? 'bg-slate-100 text-slate-700' : hazardResult.riskLevel === 'HIGH' ? 'bg-rose-600 text-white' : hazardResult.riskLevel === 'MODERATE' ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white'
                             }`}>
                             {hazardResult ? hazardResult.riskLevel : 'STANDBY'}
                           </span>
@@ -1582,16 +1579,16 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setCurrentTab('model_botanical')}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_botanical'
-                              ? 'bg-[#737F35]/12 text-[#2C2922] shadow-xs font-bold border-l-2 border-[#56612E] border-y-[#DCE4E1] border-r-[#DCE4E1]'
-                              : 'text-[#2C2922]/80 border-transparent hover:bg-[#737F35]/10 hover:text-[#2C2922] hover:border-[#737F35]/20'
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_botanical'
+                              ? 'bg-emerald-50 text-[#0D2E27] shadow-xs font-bold border-emerald-300'
+                              : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
                             }`}
                         >
                           <span className="flex items-center gap-2 truncate">
-                            <Leaf size={13} className="shrink-0 text-[#56612E]" />
+                            <Leaf size={14} className="shrink-0 text-emerald-600" />
                             <span className="truncate">Model 2: Botanical</span>
                           </span>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 border ${floraResult ? 'bg-[#56612E] text-white border-transparent' : 'bg-[#EAEFED] text-[#2C2922] border-[#DCE4E1]'}`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${floraResult ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
                             {floraResult ? floraResult.sensorRisk.toUpperCase() : 'STANDBY'}
                           </span>
                         </button>
@@ -1602,43 +1599,43 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setCurrentTab('model_vision')}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_vision'
-                              ? 'bg-[#737F35]/12 text-[#2C2922] shadow-xs font-bold border-l-2 border-[#4D6A75] border-y-[#DCE4E1] border-r-[#DCE4E1]'
-                              : 'text-[#2C2922]/80 border-transparent hover:bg-[#737F35]/10 hover:text-[#2C2922] hover:border-[#737F35]/20'
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_vision'
+                              ? 'bg-sky-50 text-[#0D2E27] shadow-xs font-bold border-sky-300'
+                              : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
                             }`}
                         >
                           <span className="flex items-center gap-2 truncate">
-                            <Camera size={13} className="shrink-0 text-[#4D6A75]" />
-                            <span className="truncate">Model 3: Computer Vision</span>
+                            <Camera size={14} className="shrink-0 text-sky-600" />
+                            <span className="truncate">Model 3: Vision AI</span>
                           </span>
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-[#EAEFED] text-[#4D6A75] border border-[#DCE4E1]">
-                            AI.OPT
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-sky-100 text-sky-800">
+                            TFLITE
                           </span>
                         </button>
                       </NavigationMenuLink>
                     </NavigationMenuContent>
                   </NavigationMenuItem>
 
-                  {/* Anak Bar: Navigation Menu Item for Section Quick Links */}
+                  {/* Quick Jump Menu */}
                   <NavigationMenuItem>
                     <NavigationMenuTrigger
-                      className="h-9 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer border bg-[#5E682B] text-[#F1D2A1] border-[#869440] hover:bg-[#FAF9F5] hover:text-[#263A35] hover:border-[#DCE4E1] hover:-translate-y-0.5 active:translate-y-0 hover:shadow-sm focus:bg-[#FAF9F5] focus:text-[#263A35] data-[active]:bg-[#FAF9F5] data-[active]:text-[#263A35] data-[state=open]:bg-[#FAF9F5] data-[state=open]:text-[#263A35] data-[state=open]:border-[#DCE4E1] data-[state=open]:shadow-md backdrop-blur-md"
+                      className="h-9 px-3.5 py-1.5 rounded-xl text-[13px] font-semibold transition-all duration-150 cursor-pointer border bg-transparent text-emerald-50 border-transparent hover:bg-white hover:text-[#0D2E27] focus:bg-white focus:text-[#0D2E27] data-[active]:bg-white data-[active]:text-[#0D2E27] data-[state=open]:bg-white data-[state=open]:text-[#0D2E27]"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full mr-1.5 transition-colors bg-[#F1D2A1] group-hover:bg-[#737F35] group-focus:bg-[#737F35] group-data-[state=open]:bg-[#737F35] shadow-[0_0_6px_currentColor]" />
-                      <span>Anak Bar Seksi</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-[#EAD39D] text-[#2C2922] border border-[#D6BC7C] font-mono ml-1.5 mr-0.5">
-                        {navItems.length} SEKSI
+                      <span className="w-2 h-2 rounded-full mr-2 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                      <span className="whitespace-nowrap">Seksi Konsol</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase bg-emerald-300 text-[#0D2E27] font-mono ml-2">
+                        {navItems.length}
                       </span>
                     </NavigationMenuTrigger>
 
-                    <NavigationMenuContent className="p-3.5 w-[420px] sm:w-[520px] md:w-[600px]">
-                      <div className="mb-2.5 px-1.5 pb-2 border-b border-[#E2E8E5] flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#56612E] flex items-center gap-1.5 font-mono">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#737F35] shadow-[0_0_6px_rgba(115,127,53,0.6)]" />
-                          <span>Anak Bar · Navigasi Cepat Seksi Konsol</span>
+                    <NavigationMenuContent className="p-3.5 w-[420px] sm:w-[520px] md:w-[580px]">
+                      <div className="mb-2.5 px-1.5 pb-2 border-b border-[#CDE0D7] flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-[#0F766E] flex items-center gap-1.5 font-mono">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <span>Navigasi Cepat Seksi Konsol</span>
                         </span>
-                        <span className="text-[9px] text-[#7E694F] font-mono">
-                          Lompat langsung ke seksi
+                        <span className="text-[11px] text-[#46655D]">
+                          Klik untuk lompat langsung
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-[360px] overflow-y-auto pr-1 flora-sidebar-scroll">
@@ -1649,15 +1646,15 @@ export const App: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => scrollToSection(item.id)}
-                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left border ${isActive
-                                    ? 'bg-[#737F35]/12 text-[#2C2922] shadow-xs font-bold border-[#737F35]/40'
-                                    : 'text-[#2C2922]/80 border-transparent hover:bg-[#737F35]/10 hover:text-[#2C2922] hover:border-[#737F35]/20'
+                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${isActive
+                                    ? 'bg-emerald-50 text-[#0D2E27] shadow-xs font-bold border-emerald-300'
+                                    : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
                                   }`}
                               >
                                 <span className="truncate">{item.label}</span>
                                 {item.badge && (
                                   <span
-                                    className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ml-1.5 border ${isActive ? 'bg-[#737F35] text-white border-transparent' : 'bg-[#EAEFED] text-[#56612E] border border-[#DCE4E1]'
+                                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ml-1.5 ${isActive ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-800'
                                       }`}
                                   >
                                     {item.badge}
@@ -1674,26 +1671,8 @@ export const App: React.FC = () => {
               </NavigationMenu>
             </nav>
 
-            {/* Right: Edge Kernel Channel + Connectivity + 3D Welcome + Clock */}
-            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-              {/* Edge Kernel Channel */}
-              <div className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-[#5E682B] border border-[#869440] shrink-0 transition-transform duration-200 hover:-translate-y-0.5 shadow-xs hover:shadow-sm">
-                <span className="w-2 h-2 rounded-full shrink-0 bg-[#F1D2A1] shadow-[0_0_6px_rgba(241,210,161,0.8)] animate-pulse" />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-white uppercase tracking-wider truncate">
-                      LIVE · C HEADER AI
-                    </span>
-                    <span className="text-[9px] text-[#2C2922] font-mono font-bold px-1.5 py-0.5 rounded bg-[#EAD39D] border border-[#D6BC7C] shrink-0">
-                      100 Trees
-                    </span>
-                  </div>
-                  <span className="text-[9px] text-[#F1D2A1]/80 font-medium block truncate max-w-[130px] xl:max-w-[160px]">
-                    model_hazard.h + grenvis_sensor
-                  </span>
-                </div>
-              </div>
-
+            {/* Zone 3 (Right): Compact Status Badge + 3D + Clock (Zero Collision) */}
+            <div className="flex items-center gap-2 shrink-0">
               {/* Connectivity status */}
               {(() => {
                 const effectiveGatewayStatus = mqttWssStatus === 'connected' ? 'connected' : gatewayStatus;
@@ -1705,26 +1684,37 @@ export const App: React.FC = () => {
                   effectiveGatewayStatus,
                   effectiveBrokerConnected
                 );
+                const compactStatusText =
+                  isLiveTelemetry && !isTelemetryStale
+                    ? 'LIVE'
+                    : isTelemetryStale
+                      ? 'STALE'
+                      : mqttWssStatus === 'connected'
+                        ? 'WSS READY'
+                        : mqttWssStatus === 'connecting'
+                          ? 'CONNECTING'
+                          : 'STANDBY';
                 return (
                   <div
-                    className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm backdrop-blur-md ${deviceConn.isOnline
-                        ? 'bg-[#5E682B] border-[#869440] text-white'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs shadow-xs transition-all duration-200 backdrop-blur-md whitespace-nowrap ${
+                      deviceConn.isOnline
+                        ? 'bg-emerald-500/20 border-emerald-400/50 text-white'
                         : isTelemetryStale
-                          ? 'bg-[#5E682B] border-[#D97706]/70 text-[#D97706]'
-                          : 'bg-[#5E682B] border-[#869440] text-white'
-                      }`}
-                    title={`Gateway SSE: ${gatewayStatus.toUpperCase()} · Direct EMQX WSS (8084): ${mqttWssStatus.toUpperCase()} · Broker EMQX: ${effectiveBrokerConnected ? 'CONNECTED' : 'DISCONNECTED'}${isTelemetryStale ? ' · TELEMETRI STALE' : ''}`}
-                    aria-label="Status Gateway dan Broker Telemetri"
+                          ? 'bg-amber-500/20 border-amber-400/60 text-amber-100'
+                          : 'bg-white/10 border-white/15 text-emerald-100'
+                    }`}
+                    title={`Status Detail: ${deviceConn.text} · Gateway SSE: ${gatewayStatus.toUpperCase()} · EMQX WSS: ${mqttWssStatus.toUpperCase()}`}
+                    aria-label="Status Koneksi Telemetri"
                   >
                     <span className={`w-2 h-2 rounded-full shrink-0 ${deviceConn.dotClass}`} />
-                    <span className="font-bold font-display text-[11px] uppercase tracking-wider text-white">
-                      {deviceConn.text}
+                    <span className="font-bold font-display text-xs uppercase tracking-wider">
+                      {compactStatusText}
                     </span>
-                    <span className="text-[11px] text-[#F1D2A1]/80 font-tabular border-l border-[#869440] pl-2 hidden sm:inline-block">
+                    <span className="text-[11px] text-emerald-200/90 font-tabular border-l border-white/20 pl-2 hidden sm:inline-block">
                       {isLiveTelemetry && !isTelemetryStale && lastLiveTelemetryTime
-                        ? `${lastLiveTelemetryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}${mqttWssStatus === 'connected' ? ' · WSS' : ''}`
+                        ? lastLiveTelemetryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                         : mqttWssStatus === 'connected'
-                          ? 'WSS'
+                          ? 'WSS :8084'
                           : 'SSE'}
                     </span>
                   </div>
@@ -1734,12 +1724,12 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewMode('boot')}
-                className="group px-2.5 sm:px-3 py-1.5 rounded-xl text-[#F1D2A1] hover:bg-[#525B25] hover:text-white border border-[#869440] bg-[#5E682B] text-xs font-bold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-xs hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#F1D2A1]"
+                className="group px-3 py-1.5 rounded-xl text-amber-200 hover:bg-amber-400 hover:text-[#0D2E27] border border-amber-300/40 bg-white/10 text-xs font-bold transition-all duration-150 cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-300 whitespace-nowrap shrink-0"
                 title="Buka tampilan 3D Welcome Screen"
                 aria-label="Buka kembali tampilan 3D Welcome Screen"
               >
-                <span aria-hidden="true" className="text-[#F1D2A1] transition-transform duration-300 group-hover:rotate-45">✦</span>
-                <span className="hidden sm:inline">3D Welcome</span>
+                <span aria-hidden="true" className="transition-transform duration-300 group-hover:rotate-45">✦</span>
+                <span className="hidden md:inline">3D View</span>
               </button>
 
               <LiveClockBadge isGlassy={isScrolled} />
@@ -1760,7 +1750,7 @@ export const App: React.FC = () => {
             aria-label="Navigasi AGRAPATHA"
           >
             <div
-              className="w-70 h-full bg-[#737F35] border-r border-[#5E682B] shadow-2xl flex flex-col z-50"
+              className="w-72 h-full bg-gradient-to-b from-[#0D2E27] to-[#134237] border-r border-emerald-400/25 shadow-2xl flex flex-col z-50"
               onClick={(e) => e.stopPropagation()}
             >
               {renderSidebarContent(true)}
@@ -1769,36 +1759,40 @@ export const App: React.FC = () => {
         )}
 
         {/* Main Console Workspace */}
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 xl:p-8 2xl:p-9 max-w-360 xl:max-w-[1560px] 2xl:max-w-[1680px] mx-auto w-full overflow-x-clip">
-          {/* Top Console Header Banner (Glassmorphic) */}
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 xl:p-8 max-w-[1620px] mx-auto w-full overflow-x-clip">
+          {/* Top Console Header Banner */}
           <div
             ref={headerRef}
-            className="rounded-2xl border border-[#869440]/60 bg-[#737F35]/80 backdrop-blur-xl backdrop-saturate-150 p-4 sm:p-5 mb-5 shadow-[0_8px_32px_0_rgba(115,127,53,0.22)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden ring-1 ring-white/10"
+            className="rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-[#0D2E27] via-[#134E4A] to-[#0E6B74] p-5 sm:p-6 mb-5 shadow-[0_12px_32px_-8px_rgba(13,46,39,0.3)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden"
           >
-            {/* Glassmorphic Ambient Highlight & Shimmer Strip */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.09] via-transparent to-black/[0.12] pointer-events-none" />
-            <div className="absolute top-0 left-0 right-0 h-0.5 animate-nav-shimmer shadow-[0_1px_8px_rgba(241,210,161,0.6)] z-10" />
+            {/* Decorative Ambient Orbs */}
+            <div className="absolute -right-12 -top-12 w-56 h-56 rounded-full bg-emerald-400/15 blur-2xl pointer-events-none" />
+            <div className="absolute left-1/3 -bottom-16 w-64 h-40 rounded-full bg-sky-400/10 blur-2xl pointer-events-none" />
+            <div className="absolute top-0 left-0 right-0 h-[3px] animate-nav-shimmer z-10" />
 
-            <div className="min-w-0 relative z-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold tracking-widest text-[#F1D2A1] uppercase flex items-center gap-1.5 truncate font-mono">
-                  <img src="/agrapatha-logo.png" alt="Logo AGRAPATHA" className="w-3.5 h-3.5 object-contain shrink-0 inline-block drop-shadow-xs" />
-                  <span className="truncate">AGRAPATHA · Botanical &amp; Forest Fire Intelligence</span>
+            <div className="min-w-0 relative z-1 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-bold tracking-wide text-emerald-200 uppercase font-mono">
+                  <img src="/agrapatha-logo.png" alt="Logo AGRAPATHA" className="w-4 h-4 object-contain shrink-0" />
+                  <span>AGRAPATHA · Intelligence Console</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-300/40 text-xs font-semibold text-amber-100">
+                  EMQX WSS :8084 + Railway AI
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white mt-1 tracking-tight font-display">
-                Forest Fire Hazard &amp; Microclimate Console
+              <h1 className="text-xl sm:text-2xl lg:text-[26px] font-extrabold text-white mt-2.5 tracking-tight font-display">
+                Forest Fire Hazard, Robotics &amp; Microclimate Monitor
               </h1>
-              <p className="text-xs text-[#F1D2A1]/90 mt-1 leading-relaxed">
-                Realtime FWI sensor telemetry,{' '}
-                <code className="font-mono text-[#F1D2A1] px-1.5 py-0.5 rounded border border-[#869440]/60 bg-[#5E682B]/60 backdrop-blur-md">
+              <p className="text-xs sm:text-sm text-emerald-100/90 mt-1.5 leading-relaxed max-w-3xl">
+                Monitoring telemetri sensor real-time, inferensi Edge C{' '}
+                <code className="font-mono text-amber-200 px-1.5 py-0.5 rounded bg-black/25 border border-white/15">
                   model_hazard.h
                 </code>{' '}
-                Random Forest (100 trees), and{' '}
-                <code className="font-mono text-[#F1D2A1] px-1.5 py-0.5 rounded border border-[#869440]/60 bg-[#5E682B]/60 backdrop-blur-md">
+                &amp;{' '}
+                <code className="font-mono text-emerald-200 px-1.5 py-0.5 rounded bg-black/25 border border-white/15">
                   grenvis_sensor_model.h
-                </code>{' '}
-                evaluation.
+                </code>
+                , serta kendali lengan robot 4-DoF berbasis kondisi lapangan.
               </p>
             </div>
           </div>
@@ -1855,16 +1849,16 @@ export const App: React.FC = () => {
             {(currentTab === 'overview' || currentTab === 'all') && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Model 1 Card */}
-                <div className="agra-card p-4 sm:p-5 flex flex-col justify-between">
+                <div className="agra-card border-t-[3px] border-t-rose-500 p-5 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-[#4E8577] uppercase tracking-wider flex items-center gap-1.5">
-                        <Flame size={12} className="text-[#DC2626]" />
+                    <div className="flex items-center justify-between mb-2.5 gap-2">
+                      <span className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-1.5">
+                        <Flame size={13} className="text-rose-600" />
                         <span>Model 1 · Edge RF</span>
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${!isLiveTelemetry || isTelemetryStale || !hazardResult
-                            ? 'bg-[#E5EBE8] text-[#4D6A75] border border-[#DCE4E1]'
+                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${!isLiveTelemetry || isTelemetryStale || !hazardResult
+                            ? 'bg-slate-100 text-slate-700 border border-slate-200'
                             : hazardResult.riskLevel === 'HIGH'
                               ? 'agra-badge-high'
                               : hazardResult.riskLevel === 'MODERATE'
@@ -1875,35 +1869,35 @@ export const App: React.FC = () => {
                         {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} RISK` : 'STANDBY'}
                       </span>
                     </div>
-                    <h3 className="text-sm font-bold text-[#2C2922] font-display">
-                      Forest Fire Hazard (<code className="text-xs font-mono text-[#4E8577]">model_hazard.h</code>)
+                    <h3 className="text-[15px] font-bold text-[#102A24] font-display">
+                      Forest Fire Hazard (<code className="text-xs font-mono text-rose-700">model_hazard.h</code>)
                     </h3>
-                    <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                    <p className="text-xs text-[#46655D] mt-1.5 leading-relaxed">
                       {isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' && typeof dmc === 'number' && typeof isi === 'number'
                         ? `100-Tree Random Forest · FFMC ${ffmc.toFixed(1)}, DMC ${dmc.toFixed(1)}, ISI ${isi.toFixed(1)}`
-                        : 'Menunggu pembacaan telemetri aktif gateway untuk inferensi model_hazard.h'}
+                        : 'Menunggu input FWI lengkap (suhu, RH, angin, hujan) untuk inferensi model_hazard.h.'}
                     </p>
 
                     {/* Probability Mini-Bar */}
-                    <div className="space-y-1.5 mt-3 pt-2 border-t border-[#DCE4E1]">
-                      <div className="flex justify-between text-[10px] font-medium text-[#4D6A75]">
+                    <div className="space-y-1.5 mt-3 pt-2.5 border-t border-[#D8E7E0]">
+                      <div className="flex justify-between text-[11px] font-medium text-[#46655D]">
                         <span>Proba High: {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.highProbability.toFixed(1)}%` : '--'}</span>
                         <span>Conf: {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.confidence.toFixed(1)}%` : '--'}</span>
                       </div>
-                      <div className="h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden flex">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex">
                         <div
                           style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? hazardResult.lowProbability : 0}%` }}
-                          className="bg-[#56612E]"
+                          className="bg-emerald-500"
                           title={`Low: ${isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.lowProbability.toFixed(1)}%` : '--'}`}
                         />
                         <div
                           style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? hazardResult.moderateProbability : 0}%` }}
-                          className="bg-[#D97706]"
+                          className="bg-amber-500"
                           title={`Moderate: ${isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.moderateProbability.toFixed(1)}%` : '--'}`}
                         />
                         <div
                           style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? hazardResult.highProbability : 0}%` }}
-                          className="bg-[#DC2626]"
+                          className="bg-rose-600"
                           title={`High: ${isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.highProbability.toFixed(1)}%` : '--'}`}
                         />
                       </div>
@@ -1915,47 +1909,47 @@ export const App: React.FC = () => {
                     onClick={() => {
                       setCurrentTab('model_hazard');
                     }}
-                    className="mt-4 pt-2.5 border-t border-[#DCE4E1] text-[11px] font-bold text-[#4E8577] hover:text-[#56612E] flex items-center justify-between cursor-pointer"
+                    className="mt-4 pt-2.5 border-t border-[#D8E7E0] text-xs font-bold text-rose-700 hover:text-rose-800 flex items-center justify-between cursor-pointer"
                   >
                     <span>Buka Model 1 Hazard &amp; Detail</span>
-                    <ChevronRight size={13} />
+                    <ChevronRight size={14} />
                   </button>
                 </div>
 
                 {/* Model 2 Card */}
-                <div className="agra-card p-4 sm:p-5 flex flex-col justify-between">
+                <div className="agra-card border-t-[3px] border-t-emerald-500 p-5 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-[#56612E] uppercase tracking-wider flex items-center gap-1.5">
-                        <Leaf size={12} className="text-[#56612E]" />
+                    <div className="flex items-center justify-between mb-2.5 gap-2">
+                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-1.5">
+                        <Leaf size={13} className="text-emerald-600" />
                         <span>Model 2 · ANN Microclimate</span>
                       </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${!isLiveTelemetry || isTelemetryStale || !floraResult ? 'bg-[#E5EBE8] text-[#4D6A75] border border-[#DCE4E1]' : 'agra-badge-safe'
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${!isLiveTelemetry || isTelemetryStale || !floraResult ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'agra-badge-safe'
                         }`}>
                         {isLiveTelemetry && !isTelemetryStale && floraResult ? floraResult.sensorRisk.toUpperCase() : 'STANDBY'}
                       </span>
                     </div>
-                    <h3 className="text-sm font-bold text-[#2C2922] font-display">
-                      Botanical &amp; Soil Risk (<code className="text-xs font-mono text-[#4E8577]">grenvis_sensor_model.h</code>)
+                    <h3 className="text-[15px] font-bold text-[#102A24] font-display">
+                      Botanical &amp; Soil Risk (<code className="text-xs font-mono text-emerald-700">grenvis_sensor_model.h</code>)
                     </h3>
-                    <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                    <p className="text-xs text-[#46655D] mt-1.5 leading-relaxed">
                       {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' && typeof temp === 'number'
                         ? `ANN Health Index · Soil ${soilMoisture.toFixed(1)}% (${soilMoisture >= 30 ? 'Hidrasi Aman' : 'Defisit'}), Temp ${temp.toFixed(1)}°C`
-                        : 'Menunggu pembacaan sensor tanah dan DHT22 untuk evaluasi grenvis_sensor_model.h'}
+                        : 'Menunggu pembacaan sensor tanah dan DHT22 untuk evaluasi grenvis_sensor_model.h.'}
                     </p>
 
                     {/* Hydration / Confidence Indicator */}
-                    <div className="space-y-1.5 mt-3 pt-2 border-t border-[#DCE4E1]">
-                      <div className="flex justify-between text-[10px] font-medium text-[#4D6A75]">
+                    <div className="space-y-1.5 mt-3 pt-2.5 border-t border-[#D8E7E0]">
+                      <div className="flex justify-between text-[11px] font-medium text-[#46655D]">
                         <span>Hydration: {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? (soilMoisture >= 30 ? 'Optimal' : 'Defisit Hidrasi') : '--'}</span>
                         <span>Conf: {isLiveTelemetry && !isTelemetryStale && floraResult ? `${floraResult.sensorConfidence.toFixed(1)}%` : '--'}</span>
                       </div>
-                      <div className="h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           style={{ width: `${isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? Math.min(100, Math.max(0, soilMoisture)) : 0}%` }}
-                          className={`h-full ${typeof soilMoisture === 'number'
-                              ? soilMoisture < 25 ? 'bg-[#DC2626]' : soilMoisture < 35 ? 'bg-[#D97706]' : 'bg-[#56612E]'
-                              : 'bg-[#94A3B8]'
+                          className={`h-full rounded-full transition-all duration-300 ${typeof soilMoisture === 'number'
+                              ? soilMoisture < 25 ? 'bg-rose-500' : soilMoisture < 35 ? 'bg-amber-500' : 'bg-emerald-500'
+                              : 'bg-slate-300'
                             }`}
                         />
                       </div>
@@ -1967,22 +1961,22 @@ export const App: React.FC = () => {
                     onClick={() => {
                       setCurrentTab('model_botanical');
                     }}
-                    className="mt-4 pt-2.5 border-t border-[#DCE4E1] text-[11px] font-bold text-[#4E8577] hover:text-[#56612E] flex items-center justify-between cursor-pointer"
+                    className="mt-4 pt-2.5 border-t border-[#D8E7E0] text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center justify-between cursor-pointer"
                   >
                     <span>Buka Model 2 Botani &amp; Irigasi</span>
-                    <ChevronRight size={13} />
+                    <ChevronRight size={14} />
                   </button>
                 </div>
 
                 {/* Model 3 Card */}
-                <div className="agra-card p-4 sm:p-5 flex flex-col justify-between">
+                <div className="agra-card border-t-[3px] border-t-sky-500 p-5 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-[#4D6A75] uppercase tracking-wider flex items-center gap-1.5">
-                        <Camera size={12} className="text-[#4D6A75]" />
+                    <div className="flex items-center justify-between mb-2.5 gap-2">
+                      <span className="text-[11px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-1.5">
+                        <Camera size={13} className="text-sky-600" />
                         <span>Model 3 · Vision TFLite</span>
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full agra-badge-skyline">
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full agra-badge-skyline">
                         {visionPrediction.includes('Fire')
                           ? 'FIRE DETECTED'
                           : visionPrediction.includes('Smoke')
@@ -1990,33 +1984,33 @@ export const App: React.FC = () => {
                             : 'OPTICAL CLEAR'}
                       </span>
                     </div>
-                    <h3 className="text-sm font-bold text-[#2C2922] font-display">
-                      Computer Vision (<code className="text-xs font-mono text-[#4E8577]">mobilenetv2.tflite</code>)
+                    <h3 className="text-[15px] font-bold text-[#102A24] font-display">
+                      Computer Vision (<code className="text-xs font-mono text-sky-700">be-binus</code>)
                     </h3>
-                    <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                    <p className="text-xs text-[#46655D] mt-1.5 leading-relaxed">
                       Railway Cloud API · Frame Status: {cameraStatus === 'streaming' ? 'Live Stream' : previewUrl ? 'Captured Frame' : 'Standby / Ready'}
                     </p>
 
                     {/* Optical Proba Mini-Bar */}
-                    <div className="space-y-1.5 mt-3 pt-2 border-t border-[#DCE4E1]">
-                      <div className="flex justify-between text-[10px] font-medium text-[#4D6A75]">
+                    <div className="space-y-1.5 mt-3 pt-2.5 border-t border-[#D8E7E0]">
+                      <div className="flex justify-between text-[11px] font-medium text-[#46655D]">
                         <span>Smoke: {visionProbs.smoke.toFixed(1)}%</span>
                         <span>Fire: {visionProbs.fire.toFixed(1)}%</span>
                       </div>
-                      <div className="h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden flex">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex">
                         <div
                           style={{ width: `${visionProbs.healthy}%` }}
-                          className="bg-[#56612E]"
-                          title={`Healthy: ${visionProbs.healthy.toFixed(1)}%`}
+                          className="bg-emerald-500"
+                          title={`Non-Fire: ${visionProbs.healthy.toFixed(1)}%`}
                         />
                         <div
                           style={{ width: `${visionProbs.smoke}%` }}
-                          className="bg-[#D97706]"
+                          className="bg-amber-500"
                           title={`Smoke: ${visionProbs.smoke.toFixed(1)}%`}
                         />
                         <div
                           style={{ width: `${visionProbs.fire}%` }}
-                          className="bg-[#DC2626]"
+                          className="bg-rose-600"
                           title={`Fire: ${visionProbs.fire.toFixed(1)}%`}
                         />
                       </div>
@@ -2028,51 +2022,51 @@ export const App: React.FC = () => {
                     onClick={() => {
                       setCurrentTab('model_vision');
                     }}
-                    className="mt-4 pt-2.5 border-t border-[#DCE4E1] text-[11px] font-bold text-[#4E8577] hover:text-[#56612E] flex items-center justify-between cursor-pointer"
+                    className="mt-4 pt-2.5 border-t border-[#D8E7E0] text-xs font-bold text-sky-700 hover:text-sky-800 flex items-center justify-between cursor-pointer"
                   >
                     <span>Buka Model 3 Kamera &amp; Inferensi</span>
-                    <ChevronRight size={13} />
+                    <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* 1. OVERVIEW HERO CARD (Olive Green Glassmorphism Theme) */}
+            {/* 1. OVERVIEW HERO CARD (Deep Emerald-Teal Telemetry Command Theme) */}
             {(currentTab === 'overview' || currentTab === 'all') && (
               <>
                 <section
                   id="overview"
-                  className="scroll-mt-6 sm:scroll-mt-8 rounded-2xl border border-[#869440]/60 bg-[#737F35]/75 backdrop-blur-xl backdrop-saturate-150 p-5 sm:p-6 lg:p-7 flex flex-col justify-between gap-6 transition-all shadow-[0_8px_32px_0_rgba(44,41,34,0.18)] relative overflow-hidden text-white ring-1 ring-white/10"
+                  className="scroll-mt-6 sm:scroll-mt-8 rounded-2xl border border-emerald-400/35 bg-gradient-to-br from-[#0D2E27] via-[#124E46] to-[#0E6A75] p-5 sm:p-6 lg:p-7 flex flex-col justify-between gap-6 transition-all shadow-[0_14px_36px_-8px_rgba(13,46,39,0.3)] relative overflow-hidden text-white"
                 >
-                  {/* Glassmorphic Ambient Highlight & Shimmer Strip */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.08] via-transparent to-black/[0.1] pointer-events-none" />
-                  <div className="absolute top-0 left-0 right-0 h-0.5 animate-nav-shimmer shadow-[0_1px_8px_rgba(241,210,161,0.6)] z-10" />
+                  {/* Decorative Highlight & Shimmer Strip */}
+                  <div className="absolute -right-20 -bottom-20 w-72 h-72 rounded-full bg-teal-300/10 blur-3xl pointer-events-none" />
+                  <div className="absolute top-0 left-0 right-0 h-[3px] animate-nav-shimmer z-10" />
 
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-white/10 relative z-1">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-white/15 relative z-1">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#F1D2A1] block font-mono">
-                        AGRAPATHA · Montesinho FWI &amp; Microclimate Overview
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-200 block font-mono">
+                        AGRAPATHA · FWI &amp; Live Microclimate Overview
                       </span>
-                      <h2 className="text-xl lg:text-2xl font-bold font-display text-white tracking-tight mt-1">
+                      <h2 className="text-xl lg:text-2xl font-extrabold font-display text-white tracking-tight mt-1">
                         Forest Fire Hazard &amp; Environmental Intelligence
                       </h2>
                     </div>
                     <div className="flex items-center gap-2 self-start md:self-auto shrink-0 flex-wrap">
-                      <span className="text-[11px] text-[#F1D2A1] font-tabular px-2.5 py-1 rounded-xl bg-[#5E682B]/60 backdrop-blur-md border border-[#869440]/60 shadow-2xs">
+                      <span className="text-xs text-emerald-100 font-tabular px-3 py-1 rounded-xl bg-white/10 backdrop-blur-md border border-white/20">
                         Kaggle Label: {isLiveTelemetry && !isTelemetryStale && hazardResult ? hazardResult.kaggleBinaryPrediction : 'STANDBY'}
                       </span>
-                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-[#EAD39D]/90 backdrop-blur-md text-[#2C2922] border border-[#D6BC7C] shadow-2xs font-mono uppercase">
-                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} Priority` : 'STANDBY'}
+                      <span className="text-xs font-bold px-3 py-1 rounded-xl bg-amber-300 text-[#0D2E27] shadow-xs font-mono uppercase">
+                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} Priority` : envCondition || 'STANDBY'}
                       </span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start relative z-1">
-                    <div className="lg:col-span-2 space-y-3.5">
+                    <div className="lg:col-span-2 space-y-4">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#F1D2A1] shadow-[0_0_6px_rgba(241,210,161,0.7)] animate-pulse" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-[#F1D2A1]">
-                          Current Forest &amp; Botanical Status
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+                          Status Sistem &amp; Telemetri Lapangan
                         </span>
                       </div>
                       <h3 className="text-lg lg:text-xl font-bold font-display text-white leading-snug">
@@ -2086,14 +2080,14 @@ export const App: React.FC = () => {
                             ? `Telemetri Sensor Onboard Aktif — Status ${systemState || envCondition || 'LIVE'}`
                             : 'Sistem Monitoring Siaga — Menunggu Telemetri Live'}
                       </h3>
-                      <p className="text-xs lg:text-sm text-[#F1D2A1]/90 leading-relaxed max-w-2xl">
+                      <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed max-w-2xl">
                         {isLiveTelemetry && !isTelemetryStale && hazardResult && typeof temp === 'number' && typeof rh === 'number' && typeof wind === 'number' && typeof rain === 'number' && typeof ffmc === 'number' && typeof dmc === 'number' ? (
                           <>
-                            Berdasarkan eksekusi langsung 100 pohon keputusan pada <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">model_hazard.h</code> dengan vektor input <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">[{temp.toFixed(1)}°C, {rh.toFixed(0)}%, {wind.toFixed(1)} km/h, {rain.toFixed(1)} mm, FFMC {ffmc.toFixed(1)}, DMC {dmc.toFixed(1)}]</code>, probabilitas kelas adalah <strong>High {hazardResult.highProbability.toFixed(1)}%</strong>, <strong>Moderate {hazardResult.moderateProbability.toFixed(1)}%</strong>, dan <strong>Low {hazardResult.lowProbability.toFixed(1)}%</strong>.
+                            Berdasarkan eksekusi langsung 100 pohon keputusan pada <code className="text-amber-200 font-mono px-1.5 py-0.5 rounded bg-black/25 border border-white/15">model_hazard.h</code> dengan vektor input <code className="text-amber-200 font-mono px-1.5 py-0.5 rounded bg-black/25 border border-white/15">[{temp.toFixed(1)}°C, {rh.toFixed(0)}%, {wind.toFixed(1)} km/h, {rain.toFixed(1)} mm, FFMC {ffmc.toFixed(1)}, DMC {dmc.toFixed(1)}]</code>, probabilitas kelas adalah <strong>High {hazardResult.highProbability.toFixed(1)}%</strong>, <strong>Moderate {hazardResult.moderateProbability.toFixed(1)}%</strong>, dan <strong>Low {hazardResult.lowProbability.toFixed(1)}%</strong>.
                           </>
                         ) : isLiveTelemetry && !isTelemetryStale ? (
                           <>
-                            Stream sensor onboard ESP32 aktif via EMQX WSS (:8084): kondisi <strong>{envCondition || 'NORMAL'}</strong>{commandLabel ? ` (${commandLabel})` : ''}. Sensor FWI angin/hujan tidak terpasang pada unit lapangan ini sehingga <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">model_hazard.h</code> dalam mode standby.
+                            Stream sensor onboard ESP32 aktif via EMQX WSS (:8084): kondisi <strong>{envCondition || 'NORMAL'}</strong>{commandLabel ? ` (${commandLabel})` : ''}. Sensor FWI angin/hujan tidak terpasang pada unit lapangan ini sehingga <code className="text-amber-200 font-mono px-1.5 py-0.5 rounded bg-black/25 border border-white/15">model_hazard.h</code> dalam mode standby.
                           </>
                         ) : (
                           'Evaluasi live menunggu aliran data telemetri valid dari EMQX WSS (:8084) atau Gateway. Hasil prediksi tidak ditampilkan saat disconnected atau stale.'
@@ -2101,167 +2095,187 @@ export const App: React.FC = () => {
                       </p>
 
                       {/* Telemetry Pill Strip */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-2.5 pt-1 w-full">
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">1. Suhu (DHT22)</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 pt-1 w-full">
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-orange-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Suhu (DHT22)</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? `${temp.toFixed(1)}°C` : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? `${temp.toFixed(1)}°C` : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#0284C7] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">2. RH Udara</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-sky-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">RH Udara</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? `${rh.toFixed(1)}%` : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? `${rh.toFixed(1)}%` : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#84CC16] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">3. Tanah (v1.2)</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-emerald-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Tanah (v1.2)</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#A855F7] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">4. Gas (MQ-135)</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-violet-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-violet-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Gas MQ-135</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale ? (typeof gasPpm === 'number' ? `${gasPpm.toFixed(0)} ppm` : typeof mq135Raw === 'number' ? `${mq135Raw.toFixed(0)} ADC` : 'Unavailable') : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale ? (typeof gasPpm === 'number' ? `${gasPpm.toFixed(0)} ppm` : typeof mq135Raw === 'number' ? `${mq135Raw.toFixed(0)} ADC` : '--') : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">5. Flame Sensor</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-rose-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Flame Array</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 'FLAME' : 'SAFE') : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 'FLAME' : 'SAFE') : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#14B8A6] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">Angin Ambien</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-teal-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-teal-300 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Jarak ToF</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof wind === 'number' ? `${wind.toFixed(1)} km/h` : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof distanceMm === 'number' ? (distanceMm >= 9000 ? '>8m' : `${distanceMm}mm`) : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">FFMC Serasah</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-amber-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">FFMC Indeks</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? ffmc.toFixed(1) : 'Unavailable'}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? ffmc.toFixed(1) : '--'}</span>
                         </div>
-                        <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/75 hover:border-[#F1D2A1]/70 px-2.5 py-2 rounded-xl flex items-center justify-between gap-1.5 text-xs min-h-10.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all duration-200 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#A855F7] shrink-0" />
-                            <span className="text-[#F1D2A1] text-[11px] font-semibold truncate">Rel L298N OUT3/4</span>
+                        <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-cyan-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-cyan-300 shrink-0" />
+                            <span className="text-emerald-100 font-semibold truncate">Rel &amp; Zona</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-xs whitespace-nowrap shrink-0">{movementStatus === 'idle' ? 'STANDBY' : movementStatus.replace(/_command_sent|_command/g, '').toUpperCase()}</span>
+                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{zone !== null ? `Z${zone}` : movementStatus === 'idle' ? 'STANDBY' : movementStatus.replace(/_command_sent|_command/g, '').toUpperCase()}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Right Risk Index Box */}
-                    <div className="bg-[#5E682B]/50 backdrop-blur-md border border-[#869440]/60 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-center text-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10">
-                      <span className="text-[10px] text-[#F1D2A1] uppercase tracking-widest font-bold block mb-1 font-mono">
-                        model_hazard.h Risk Index
+                    <div className="bg-black/20 backdrop-blur-md border border-emerald-300/25 rounded-2xl p-5 flex flex-col items-center justify-center text-center shadow-lg">
+                      <span className="text-xs text-emerald-200 uppercase tracking-wider font-bold block mb-1 font-mono">
+                        Status &amp; Indeks AI
                       </span>
                       <div
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border my-2 font-display ${!isLiveTelemetry || isTelemetryStale || !hazardResult
-                            ? 'bg-[#2C2922]/80 backdrop-blur-sm text-[#EAD39D] border-[#D6BC7C]/80 shadow-xs'
-                            : hazardResult.riskLevel === 'HIGH'
-                              ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
-                              : hazardResult.riskLevel === 'MODERATE'
-                                ? 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
-                                : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                        className={`px-4 py-1.5 rounded-xl text-sm font-extrabold border my-2 font-display ${!isLiveTelemetry || isTelemetryStale
+                            ? 'bg-white/10 text-amber-200 border-amber-300/40'
+                            : hazardResult
+                              ? hazardResult.riskLevel === 'HIGH'
+                                ? 'bg-rose-500 text-white border-rose-300'
+                                : hazardResult.riskLevel === 'MODERATE'
+                                  ? 'bg-amber-400 text-[#0D2E27] border-amber-200'
+                                  : 'bg-emerald-400 text-[#0D2E27] border-emerald-200'
+                              : envCondition === 'KEBAKARAN' || envCondition === 'GAS_BERACUN'
+                                ? 'bg-rose-500 text-white border-rose-300'
+                                : envCondition === 'FAULT' || envCondition === 'KERING' || envCondition === 'BASAH'
+                                  ? 'bg-amber-400 text-[#0D2E27] border-amber-200'
+                                  : 'bg-emerald-400 text-[#0D2E27] border-emerald-200'
                           }`}
                       >
-                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} RISK` : 'STANDBY'}
+                        {isLiveTelemetry && !isTelemetryStale
+                          ? hazardResult
+                            ? `${hazardResult.riskLevel} RISK`
+                            : envCondition || 'ONLINE'
+                          : 'STANDBY'}
                       </div>
-                      <span className="text-[11px] text-[#F1D2A1]/90 font-tabular mt-0.5">
-                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.confidence.toFixed(2)}% confidence` : '--'}
+                      <span className="text-xs text-emerald-100 font-tabular mt-0.5">
+                        {isLiveTelemetry && !isTelemetryStale && hazardResult
+                          ? `${hazardResult.confidence.toFixed(1)}% confidence`
+                          : isLiveTelemetry && !isTelemetryStale
+                            ? `State: ${systemState || 'LIVE'}`
+                            : 'Menunggu Data'}
                       </span>
-                      <p className="text-[10px] text-[#F1D2A1]/80 mt-2 m-0 leading-tight">
+                      <p className="text-xs text-emerald-200/85 mt-2.5 m-0 leading-relaxed">
                         {isLiveTelemetry && !isTelemetryStale && hazardResult && floraResult
-                          ? <>Evaluated via 100-Tree C Random Forest (<code className="font-mono text-[#F1D2A1] bg-[#525B25]/60 border border-[#869440]/60 px-1 py-0.5 rounded">model_hazard.h</code>) &amp; Botanical MLP (<code className="font-mono text-[#F1D2A1] bg-[#525B25]/60 border border-[#869440]/60 px-1 py-0.5 rounded">{floraResult.sensorRisk}</code>).</>
-                          : 'Inference Standby · Menunggu Telemetri'}
+                          ? <>Evaluasi <code className="font-mono text-amber-200 px-1 rounded bg-black/25">model_hazard.h</code> &amp; <code className="font-mono text-emerald-200 px-1 rounded bg-black/25">{floraResult.sensorRisk}</code> aktif.</>
+                          : isLiveTelemetry && !isTelemetryStale
+                            ? (commandLabel || 'Stream telemetri onboard aktif via WSS')
+                            : 'Inference Standby · Menunggu Telemetri'}
                       </p>
                     </div>
                   </div>
 
                   {/* 4 Bottom Pillar Boxes */}
-                  <div className="pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 relative z-1">
-                    <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/70 hover:border-[#F1D2A1]/60 transition-all duration-200 p-3 rounded-xl flex flex-col justify-between min-h-20.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                      <span className="text-[10px] font-bold text-[#F1D2A1] uppercase tracking-wider block font-mono">
-                        1. Meteorology (Montesinho)
+                  <div className="pt-4 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 relative z-1">
+                    <div className="bg-black/20 backdrop-blur-md border border-white/15 hover:border-amber-300/50 transition-all duration-150 p-3.5 rounded-xl flex flex-col justify-between min-h-22">
+                      <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider block font-mono">
+                        1. Mikroklimat Udara
                       </span>
-                      <span className="text-xs font-bold text-white block mt-1">
+                      <span className="text-sm font-bold text-white block mt-1">
                         {isLiveTelemetry && !isTelemetryStale && typeof temp === 'number'
-                          ? temp >= 28 ? 'Hot / Dry Air' : temp <= 12 ? 'Cool Canopy' : 'Temperate Optimal'
+                          ? temp >= 28 ? 'Suhu Tinggi / Kering' : temp <= 12 ? 'Kanopi Sejuk' : 'Temperatur Optimal'
                           : 'STANDBY'}
                       </span>
-                      <span className="text-[10px] text-[#F1D2A1]/85 block font-tabular mt-0.5">
-                        {isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' && typeof rh === 'number' && typeof wind === 'number'
-                          ? `${temp.toFixed(1)}°C · RH ${rh.toFixed(0)}% · Wind ${wind.toFixed(1)} km/h`
+                      <span className="text-xs text-emerald-100/85 block font-tabular mt-1">
+                        {isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' && typeof rh === 'number'
+                          ? `${temp.toFixed(1)}°C · RH ${rh.toFixed(0)}%${typeof wind === 'number' ? ` · ${wind.toFixed(1)} km/h` : ''}`
                           : 'Menunggu Telemetri'}
                       </span>
                     </div>
-                    <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/70 hover:border-[#F1D2A1]/60 transition-all duration-200 p-3 rounded-xl flex flex-col justify-between min-h-20.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                      <span className="text-[10px] font-bold text-[#F1D2A1] uppercase tracking-wider block font-mono">
+                    <div className="bg-black/20 backdrop-blur-md border border-white/15 hover:border-sky-300/50 transition-all duration-150 p-3.5 rounded-xl flex flex-col justify-between min-h-22">
+                      <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wider block font-mono">
                         2. FWI Fuel Codes
                       </span>
-                      <span className="text-xs font-bold text-white block mt-1">
+                      <span className="text-sm font-bold text-white block mt-1">
                         {isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number'
                           ? ffmc >= 90 ? 'Flammable Litter' : ffmc >= 82 ? 'Moderate Drying' : 'Moist Litter'
                           : 'STANDBY'}
                       </span>
-                      <span className="text-[10px] text-[#F1D2A1]/85 block font-tabular mt-0.5">
+                      <span className="text-xs text-emerald-100/85 block font-tabular mt-1">
                         {isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' && typeof dmc === 'number' && typeof isi === 'number'
                           ? `FFMC ${ffmc.toFixed(1)} · DMC ${dmc.toFixed(1)} · ISI ${isi.toFixed(1)}`
-                          : 'FWI Engine Standby'}
+                          : 'Menunggu Wind & Rain'}
                       </span>
                     </div>
-                    <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/70 hover:border-[#F1D2A1]/60 transition-all duration-200 p-3 rounded-xl flex flex-col justify-between min-h-20.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                      <span className="text-[10px] font-bold text-[#F1D2A1] uppercase tracking-wider block font-mono">
-                        3. Edge AI (model_hazard.h)
+                    <div className="bg-black/20 backdrop-blur-md border border-white/15 hover:border-rose-300/50 transition-all duration-150 p-3.5 rounded-xl flex flex-col justify-between min-h-22">
+                      <span className="text-[11px] font-bold text-rose-300 uppercase tracking-wider block font-mono">
+                        3. Keamanan Api &amp; Gas
                       </span>
-                      <span className="text-xs font-bold text-white block mt-1">
-                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} (${hazardResult.confidence.toFixed(1)}%)` : 'STANDBY'}
+                      <span className="text-sm font-bold text-white block mt-1">
+                        {isLiveTelemetry && !isTelemetryStale
+                          ? (typeof flameDetected === 'number' && flameDetected > 0) ? 'API TERDETEKSI' : gasAlarmActive ? 'GAS BERBAHAYA' : 'AMAN TERKENDALI'
+                          : 'STANDBY'}
                       </span>
-                      <span className="text-[10px] text-[#F1D2A1]/85 block font-tabular mt-0.5">
-                        {isLiveTelemetry && !isTelemetryStale && hazardResult ? `Kaggle Label: ${hazardResult.kaggleBinaryPrediction}` : 'Model Standby'}
+                      <span className="text-xs text-emerald-100/85 block font-tabular mt-1">
+                        {isLiveTelemetry && !isTelemetryStale && typeof mq135Raw === 'number'
+                          ? `MQ-135: ${mq135Raw} ADC · ToF: ${typeof distanceMm === 'number' ? (distanceMm >= 9000 ? '>8m' : `${distanceMm}mm`) : '--'}`
+                          : 'Sensor Array Standby'}
                       </span>
                     </div>
-                    <div className="bg-[#5E682B]/45 backdrop-blur-md border border-[#869440]/60 hover:bg-[#5E682B]/70 hover:border-[#F1D2A1]/60 transition-all duration-200 p-3 rounded-xl flex flex-col justify-between min-h-20.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.12),0_2px_8px_rgba(0,0,0,0.15)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                      <span className="text-[10px] font-bold text-[#F1D2A1] uppercase tracking-wider block font-mono">
-                        4. Soil Moisture &amp; Vision
+                    <div className="bg-black/20 backdrop-blur-md border border-white/15 hover:border-emerald-300/50 transition-all duration-150 p-3.5 rounded-xl flex flex-col justify-between min-h-22">
+                      <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider block font-mono">
+                        4. Tanah &amp; Cloud Vision
                       </span>
-                      <span className="text-xs font-bold text-white block mt-1">
+                      <span className="text-sm font-bold text-white block mt-1">
                         {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' && floraResult
                           ? `Soil ${soilMoisture.toFixed(1)}% (${floraResult.sensorRisk})`
                           : 'Soil -- (STANDBY)'}
                       </span>
-                      <span className="text-[10px] text-[#F1D2A1]/85 block font-tabular mt-0.5">
-                        {wildfireResult && inferenceStatus === 'success' ? visionPrediction : 'Vision Standby'}
+                      <span className="text-xs text-emerald-100/85 block font-tabular mt-1">
+                        {wildfireResult && inferenceStatus === 'success' ? visionPrediction : 'Vision Ready (be-binus)'}
                       </span>
                     </div>
                   </div>
                 </section>
 
-                {/* 2. LIVE ENVIRONMENTAL SENSORS (6-Card Grid with exact Kaggle Dataset Ranges) */}
+                {/* 2. LIVE ENVIRONMENTAL SENSORS (6-Card Color-Coded Grid) */}
                 <section id="monitoring" className="scroll-mt-6 sm:scroll-mt-8">
                   <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
-                        Telemetry Stream · 6 C-Model Inputs + Soil Moisture
+                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
+                        Telemetry Stream · Live Sensor Array
                       </span>
-                      <h2 className="text-lg font-bold text-[#263A35] tracking-tight font-display">
+                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] tracking-tight font-display">
                         Live Environmental &amp; FWI Sensors
                       </h2>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EFF3EF] border border-[#A6B49E] text-xs font-semibold text-[#263A35]">
-                      <span className="w-2 h-2 rounded-full bg-[#4E635E] animate-pulse" />
-                      <span>Calibrated to forestfires.csv (517) &amp; FWI Reference</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Calibrated to forestfires.csv &amp; Onboard Node</span>
                     </div>
                   </div>
 
@@ -2270,7 +2284,9 @@ export const App: React.FC = () => {
                       {
                         title: '1. Suhu Udara (Air Temperature)',
                         shortTitle: 'Suhu Udara (DHT22)',
-                        channelTag: 'Sensor 1',
+                        channelTag: 'Sensor 1 · Mikroklimat',
+                        cardTopAccent: 'border-t-[3px] border-t-orange-500',
+                        tagClass: 'text-orange-700 bg-orange-50 border-orange-200',
                         value: formatSensorValue(temp, isLiveTelemetry && !isTelemetryStale, 1),
                         unit: isLiveTelemetry && !isTelemetryStale ? '°C' : '',
                         statusLabel: getSensorStatusLabel('temp', temp, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
@@ -2278,7 +2294,7 @@ export const App: React.FC = () => {
                         percent: isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? Math.min(100, Math.max(0, (temp / 45) * 100)) : 0,
                         minLabel: '0°C',
                         maxLabel: '45°C',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? (temp >= 28 ? 'bg-[#DC2626]' : temp <= 15 ? 'bg-[#0284C7]' : 'bg-[#4E635E]') : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? (temp >= 28 ? 'bg-gradient-to-r from-orange-500 to-rose-600' : temp <= 15 ? 'bg-gradient-to-r from-cyan-400 to-sky-500' : 'bg-gradient-to-r from-amber-400 to-orange-500') : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
@@ -2286,7 +2302,9 @@ export const App: React.FC = () => {
                       {
                         title: '2. Kelembapan Udara (Relative Humidity)',
                         shortTitle: 'Kelembapan Udara',
-                        channelTag: 'Sensor 2',
+                        channelTag: 'Sensor 2 · Atmosfer',
+                        cardTopAccent: 'border-t-[3px] border-t-sky-500',
+                        tagClass: 'text-sky-700 bg-sky-50 border-sky-200',
                         value: formatSensorValue(rh, isLiveTelemetry && !isTelemetryStale, 1),
                         unit: isLiveTelemetry && !isTelemetryStale ? '%' : '',
                         statusLabel: getSensorStatusLabel('rh', rh, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
@@ -2294,7 +2312,7 @@ export const App: React.FC = () => {
                         percent: isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? Math.min(100, Math.max(0, rh)) : 0,
                         minLabel: '0%',
                         maxLabel: '100%',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? (rh < 35 ? 'bg-[#DC2626]' : rh > 80 ? 'bg-[#0284C7]' : 'bg-[#4E635E]') : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? (rh < 35 ? 'bg-gradient-to-r from-orange-500 to-rose-600' : 'bg-gradient-to-r from-cyan-400 to-sky-600') : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
@@ -2302,7 +2320,9 @@ export const App: React.FC = () => {
                       {
                         title: '3. Kelembapan Tanah (Soil Moisture)',
                         shortTitle: 'Kelembapan Tanah',
-                        channelTag: 'Sensor 3',
+                        channelTag: 'Sensor 3 · Soil v1.2',
+                        cardTopAccent: 'border-t-[3px] border-t-emerald-500',
+                        tagClass: 'text-emerald-700 bg-emerald-50 border-emerald-200',
                         value: formatSensorValue(soilMoisture, isLiveTelemetry && !isTelemetryStale, 1),
                         unit: isLiveTelemetry && !isTelemetryStale ? '%' : '',
                         statusLabel: getSensorStatusLabel('soil', soilMoisture, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
@@ -2310,7 +2330,7 @@ export const App: React.FC = () => {
                         percent: isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? Math.min(100, Math.max(0, soilMoisture)) : 0,
                         minLabel: '0%',
                         maxLabel: '100%',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? (soilMoisture < 25 ? 'bg-[#DC2626]' : soilMoisture > 75 ? 'bg-[#0284C7]' : 'bg-[#84CC16]') : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? (soilMoisture < 25 ? 'bg-gradient-to-r from-amber-500 to-rose-600' : soilMoisture > 75 ? 'bg-gradient-to-r from-sky-400 to-blue-600' : 'bg-gradient-to-r from-emerald-400 to-teal-600') : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
@@ -2318,7 +2338,9 @@ export const App: React.FC = () => {
                       {
                         title: '4. Kualitas Udara & Gas (MQ-135)',
                         shortTitle: 'MQ-135 Gas / Air Quality',
-                        channelTag: 'Sensor 4 · Hardware Terkonfirmasi',
+                        channelTag: 'Sensor 4 · Gas & Asap',
+                        cardTopAccent: 'border-t-[3px] border-t-violet-500',
+                        tagClass: 'text-violet-700 bg-violet-50 border-violet-200',
                         value: isLiveTelemetry && !isTelemetryStale
                           ? (typeof gasPpm === 'number'
                             ? formatSensorValue(gasPpm, true, 0)
@@ -2344,15 +2366,17 @@ export const App: React.FC = () => {
                           : 0,
                         minLabel: isLiveTelemetry && !isTelemetryStale && typeof gasPpm === 'number' ? '0 ppm' : '0 ADC',
                         maxLabel: isLiveTelemetry && !isTelemetryStale && typeof gasPpm === 'number' ? '2000 ppm' : '4095 ADC',
-                        barColor: isLiveTelemetry && !isTelemetryStale && ((typeof gasPpm === 'number' && gasPpm >= 800) || (typeof mq135Raw === 'number' && mq135Raw >= 2500)) ? 'bg-[#DC2626]' : isLiveTelemetry && !isTelemetryStale ? 'bg-[#4E635E]' : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && ((typeof gasPpm === 'number' && gasPpm >= 800) || (typeof mq135Raw === 'number' && mq135Raw >= 2500)) ? 'bg-gradient-to-r from-orange-500 to-rose-600' : isLiveTelemetry && !isTelemetryStale ? 'bg-gradient-to-r from-violet-400 to-indigo-600' : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
                       },
                       {
                         title: '5. Deteksi Api (Flame Sensor)',
-                        shortTitle: 'Flame Sensor',
-                        channelTag: 'Sensor 5 · Hardware Terkonfirmasi',
+                        shortTitle: 'Flame Sensor 5-Ch',
+                        channelTag: 'Sensor 5 · Optik IR',
+                        cardTopAccent: 'border-t-[3px] border-t-rose-500',
+                        tagClass: 'text-rose-700 bg-rose-50 border-rose-200',
                         value: formatSensorValue(flameDetected, isLiveTelemetry && !isTelemetryStale, 0),
                         unit: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 'FLAME' : 'CLEAR') : '',
                         statusLabel: getSensorStatusLabel('flame', flameDetected, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
@@ -2360,7 +2384,7 @@ export const App: React.FC = () => {
                         percent: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 100 : 0) : 0,
                         minLabel: '0 (Aman)',
                         maxLabel: '1 (Api)',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' && flameDetected > 0 ? 'bg-[#DC2626]' : isLiveTelemetry && !isTelemetryStale ? 'bg-[#4E635E]' : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' && flameDetected > 0 ? 'bg-gradient-to-r from-orange-500 to-rose-600' : isLiveTelemetry && !isTelemetryStale ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
@@ -2368,7 +2392,9 @@ export const App: React.FC = () => {
                       {
                         title: '6. Indeks Serasah & Angin (FWI Engine)',
                         shortTitle: 'Fine Fuel & Wind (FFMC)',
-                        channelTag: 'model_hazard.h · FWI',
+                        channelTag: 'Sensor 6 · FWI Engine',
+                        cardTopAccent: 'border-t-[3px] border-t-amber-500',
+                        tagClass: 'text-amber-700 bg-amber-50 border-amber-200',
                         value: formatSensorValue(ffmc, isLiveTelemetry && !isTelemetryStale, 1),
                         unit: isLiveTelemetry && !isTelemetryStale && typeof wind === 'number' ? `idx (Wind ${wind.toFixed(1)} km/h)` : (isLiveTelemetry && !isTelemetryStale ? 'idx' : ''),
                         statusLabel: getSensorStatusLabel('ffmc', ffmc, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
@@ -2376,7 +2402,7 @@ export const App: React.FC = () => {
                         percent: isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? Math.min(100, Math.max(0, ffmc)) : 0,
                         minLabel: '0 idx',
                         maxLabel: '100 idx',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? (ffmc >= 89.5 ? 'bg-[#DC2626]' : ffmc >= 82 ? 'bg-[#D97706]' : 'bg-[#4E635E]') : 'bg-[#94A3B8]',
+                        barColor: isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? (ffmc >= 89.5 ? 'bg-gradient-to-r from-orange-500 to-rose-600' : ffmc >= 82 ? 'bg-gradient-to-r from-yellow-400 to-amber-500' : 'bg-gradient-to-r from-emerald-400 to-teal-500') : 'bg-slate-300',
                         explanation: '',
                         reference: '',
                         extra: '',
@@ -2384,59 +2410,65 @@ export const App: React.FC = () => {
                     ].map((card) => (
                       <article
                         key={card.title}
-                        className="flora-card flora-card-interactive p-5 lg:p-6 flex flex-col justify-between shadow-xs hover:shadow-md transition-all duration-200"
+                        className={`flora-card flora-card-interactive ${card.cardTopAccent} p-5 flex flex-col justify-between transition-all duration-200`}
                       >
                         <div className="flex flex-col">
                           <div>
                             {/* Header: Channel tag + Status Pill */}
-                            <div className="flex justify-between items-start mb-2 gap-2 min-h-11">
+                            <div className="flex justify-between items-start mb-2.5 gap-2">
                               <div className="min-w-0">
-                                <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-wider block font-mono truncate">
+                                <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wide font-mono ${card.tagClass}`}>
                                   {card.channelTag}
                                 </span>
-                                <h3 className="text-xs sm:text-sm font-bold text-[#263A35] font-display mt-0.5 truncate">
+                                <h3 className="text-[15px] font-bold text-[#102A24] font-display mt-1.5 truncate">
                                   {card.shortTitle}
                                 </h3>
                               </div>
                               <span
-                                className={`text-[10px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1.5 uppercase tracking-wide shrink-0 whitespace-nowrap shadow-2xs ${card.isWarn
-                                    ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
-                                    : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1.5 uppercase tracking-wide shrink-0 whitespace-nowrap ${card.isWarn
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                    : isLiveTelemetry && !isTelemetryStale && card.value !== 'Unavailable'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : 'bg-slate-100 text-slate-600 border-slate-200'
                                   }`}
                               >
                                 <span
-                                  className={`w-1.5 h-1.5 rounded-full ${card.isWarn ? 'bg-[#DC2626] animate-pulse' : 'bg-[#4E635E]'
+                                  className={`w-2 h-2 rounded-full ${card.isWarn ? 'bg-rose-500 animate-pulse' : isLiveTelemetry && !isTelemetryStale && card.value !== 'Unavailable' ? 'bg-emerald-500' : 'bg-slate-400'
                                     }`}
                                 />
                                 {card.statusLabel}
                               </span>
                             </div>
 
-                            {/* Large Value Display (Hidden when Unavailable) */}
+                            {/* Balanced Metric Value Display */}
                             {card.value && card.value !== 'Unavailable' ? (
-                              <div className="my-2 flex items-baseline gap-2 flex-wrap">
-                                <span className="text-3xl lg:text-4xl font-extrabold font-tabular text-[#263A35] tracking-tight">
+                              <div className="my-2.5 flex items-baseline gap-2 flex-wrap">
+                                <span className="text-2xl sm:text-[28px] font-extrabold font-tabular text-[#102A24] tracking-tight">
                                   {card.value}
                                 </span>
-                                <span className="text-xs sm:text-sm font-bold text-[#50645F] font-display whitespace-nowrap">
+                                <span className="text-sm font-bold text-[#46655D] font-display whitespace-nowrap">
                                   {card.unit}
                                 </span>
                               </div>
-                            ) : null}
+                            ) : (
+                              <div className="my-2.5 text-sm font-semibold text-slate-400 italic">
+                                Menunggu sensor aktif...
+                              </div>
+                            )}
 
                             {/* Visual Range Spectrum Gauge */}
-                            <div className="my-2.5 bg-[#F5F4EE] p-2.5 rounded-xl border border-[#E2E0CB]">
-                              <div className="flex justify-between items-center text-[10px] font-mono text-[#50645F] mb-1">
+                            <div className="my-2 bg-[#F2F8F5] p-3 rounded-xl border border-[#CFE2D9]">
+                              <div className="flex justify-between items-center text-[11px] font-mono text-[#46655D] mb-1.5">
                                 <span>Range Spectrum</span>
-                                <span className="font-bold text-[#263A35]">{card.percent.toFixed(0)}% scale</span>
+                                <span className="font-bold text-[#102A24]">{card.percent.toFixed(0)}%</span>
                               </div>
-                              <div className="w-full h-1.5 bg-[#E2E0CB] rounded-full overflow-hidden">
+                              <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-[#DCECE4]">
                                 <div
                                   className={`h-full rounded-full flora-meter-bar ${card.barColor}`}
                                   style={{ width: `${card.percent}%` }}
                                 />
                               </div>
-                              <div className="flex justify-between text-[9px] font-mono text-[#50645F]/80 mt-1">
+                              <div className="flex justify-between text-[11px] font-mono text-[#46655D] mt-1.5">
                                 <span>{card.minLabel}</span>
                                 <span>{card.maxLabel}</span>
                               </div>
@@ -2504,126 +2536,126 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* DUAL AI ANALYSIS GRID (model_hazard.h + AI Vision / Botanical Neural Network) */}
+            {/* DUAL AI ANALYSIS GRID (model_hazard.h + AI Vision) */}
             {(currentTab === 'overview' || currentTab === 'all') && (
               <>
                 <div className="scroll-mt-6 sm:scroll-mt-8 grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch" id="analysis">
                   {/* Left: model_hazard.h Analysis Card */}
-                  <section className="flora-card p-5 sm:p-6 flex flex-col justify-between shadow-xs">
+                  <section className="flora-card border-t-[3px] border-t-amber-500 p-5 sm:p-6 flex flex-col justify-between">
                     <div>
                       <div className="flex justify-between items-start mb-4 gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
-                              Edge C Random Forest Engine · model_hazard.h
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">
+                              Edge C Random Forest · model_hazard.h
                             </span>
-                            <span className="text-[9px] font-semibold bg-[#EFF3EF] text-[#263A35] px-2 py-0.5 rounded-full border border-[#A6B49E] shrink-0">
+                            <span className="text-[11px] font-semibold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">
                               100 Trees · m2cgen
                             </span>
                           </div>
-                          <h2 className="text-base font-bold text-[#263A35] font-display mt-0.5">
+                          <h2 className="text-base sm:text-lg font-bold text-[#102A24] font-display mt-1">
                             Forest Fire Hazard &amp; FWI Risk Analysis
                           </h2>
                         </div>
 
                         <span
                           className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 shrink-0 whitespace-nowrap ${!isLiveTelemetry || isTelemetryStale || !hazardResult
-                              ? 'bg-[#EFF3EF] text-[#50645F] border-[#D6DCCE]'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
                               : hazardResult.riskLevel === 'HIGH'
-                                ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
                                 : hazardResult.riskLevel === 'MODERATE'
-                                  ? 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
-                                  : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             }`}
                         >
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${!isLiveTelemetry || isTelemetryStale || !hazardResult
-                                ? 'bg-[#A6B49E]'
+                            className={`w-2 h-2 rounded-full ${!isLiveTelemetry || isTelemetryStale || !hazardResult
+                                ? 'bg-slate-400'
                                 : hazardResult.riskLevel === 'HIGH'
-                                  ? 'bg-[#DC2626]'
+                                  ? 'bg-rose-500'
                                   : hazardResult.riskLevel === 'MODERATE'
-                                    ? 'bg-[#D97706]'
-                                    : 'bg-[#4E635E]'
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
                               }`}
                           />
                           {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} RISK` : 'STANDBY'}
                         </span>
                       </div>
 
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 my-2 flex items-center justify-between">
+                      <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-4 my-2 flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wider block">
                             Assessed Fire Hazard Level
                           </span>
-                          <span className="text-lg font-bold text-[#263A35] font-display block mt-0.5">
+                          <span className="text-base sm:text-lg font-bold text-[#102A24] font-display block mt-0.5">
                             {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} Risk (${hazardResult.kaggleBinaryPrediction})` : '--'}
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-semibold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-semibold text-[#46655D] uppercase tracking-wider block">
                             Model Confidence
                           </span>
-                          <span className="text-base font-bold font-tabular text-[#4E635E] block mt-0.5">
+                          <span className="text-base font-bold font-tabular text-[#0F766E] block mt-0.5">
                             {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.confidence.toFixed(2)}%` : '--'}
                           </span>
                         </div>
                       </div>
 
                       {/* 3 Class Probabilities from model_hazard.h */}
-                      <div className="grid grid-cols-3 gap-2 sm:gap-2.5 my-3">
-                        <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-[#D6DCCE] shadow-xs flex flex-col justify-between">
+                      <div className="grid grid-cols-3 gap-2.5 my-3">
+                        <div className="bg-rose-50/70 p-3 rounded-xl border border-rose-200 flex flex-col justify-between">
                           <div>
                             <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="text-[10px] font-semibold text-[#50645F] uppercase block truncate">
-                                High Risk [0]
+                              <span className="text-[11px] font-semibold text-rose-800 uppercase block truncate">
+                                High [0]
                               </span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#961C1C] shrink-0" />
+                              <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" />
                             </div>
-                            <span className="text-sm sm:text-base font-bold font-tabular text-[#961C1C] block mt-0.5 whitespace-nowrap">
-                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.highProbability.toFixed(2)}%` : '--'}
+                            <span className="text-sm sm:text-base font-bold font-tabular text-rose-700 block mt-0.5 whitespace-nowrap">
+                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.highProbability.toFixed(1)}%` : '--'}
                             </span>
                           </div>
-                          <div className="w-full h-1.5 bg-[#E2E0CB] rounded-full overflow-hidden mt-2">
+                          <div className="w-full h-1.5 bg-white rounded-full overflow-hidden mt-2">
                             <div
-                              className="h-full bg-[#961C1C] rounded-full flora-meter-bar"
+                              className="h-full bg-rose-600 rounded-full flora-meter-bar"
                               style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? Math.min(100, Math.max(0, hazardResult.highProbability)) : 0}%` }}
                             />
                           </div>
                         </div>
-                        <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-[#D6DCCE] shadow-xs flex flex-col justify-between">
+                        <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-200 flex flex-col justify-between">
                           <div>
                             <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="text-[10px] font-semibold text-[#50645F] uppercase block truncate">
+                              <span className="text-[11px] font-semibold text-amber-800 uppercase block truncate">
                                 Moderate [2]
                               </span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#8A570C] shrink-0" />
+                              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                             </div>
-                            <span className="text-sm sm:text-base font-bold font-tabular text-[#8A570C] block mt-0.5 whitespace-nowrap">
-                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.moderateProbability.toFixed(2)}%` : '--'}
+                            <span className="text-sm sm:text-base font-bold font-tabular text-amber-700 block mt-0.5 whitespace-nowrap">
+                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.moderateProbability.toFixed(1)}%` : '--'}
                             </span>
                           </div>
-                          <div className="w-full h-1.5 bg-[#E2E0CB] rounded-full overflow-hidden mt-2">
+                          <div className="w-full h-1.5 bg-white rounded-full overflow-hidden mt-2">
                             <div
-                              className="h-full bg-[#8A570C] rounded-full flora-meter-bar"
+                              className="h-full bg-amber-500 rounded-full flora-meter-bar"
                               style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? Math.min(100, Math.max(0, hazardResult.moderateProbability)) : 0}%` }}
                             />
                           </div>
                         </div>
-                        <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-[#D6DCCE] shadow-xs flex flex-col justify-between">
+                        <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 flex flex-col justify-between">
                           <div>
                             <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="text-[10px] font-semibold text-[#50645F] uppercase block truncate">
-                                Low Risk [1]
+                              <span className="text-[11px] font-semibold text-emerald-800 uppercase block truncate">
+                                Low [1]
                               </span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#4E635E] shrink-0" />
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                             </div>
-                            <span className="text-sm sm:text-base font-bold font-tabular text-[#4E635E] block mt-0.5 whitespace-nowrap">
-                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.lowProbability.toFixed(2)}%` : '--'}
+                            <span className="text-sm sm:text-base font-bold font-tabular text-emerald-700 block mt-0.5 whitespace-nowrap">
+                              {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.lowProbability.toFixed(1)}%` : '--'}
                             </span>
                           </div>
-                          <div className="w-full h-1.5 bg-[#E2E0CB] rounded-full overflow-hidden mt-2">
+                          <div className="w-full h-1.5 bg-white rounded-full overflow-hidden mt-2">
                             <div
-                              className="h-full bg-[#4E635E] rounded-full flora-meter-bar"
+                              className="h-full bg-emerald-500 rounded-full flora-meter-bar"
                               style={{ width: `${isLiveTelemetry && !isTelemetryStale && hazardResult ? Math.min(100, Math.max(0, hazardResult.lowProbability)) : 0}%` }}
                             />
                           </div>
@@ -2633,37 +2665,37 @@ export const App: React.FC = () => {
                   </section>
 
                   {/* Right: AI Vision Canopy & Smoke/Fire Analysis Card */}
-                  <section className="flora-card p-5 sm:p-6 lg:p-6 flex flex-col justify-between shadow-xs">
+                  <section className="flora-card border-t-[3px] border-t-sky-500 p-5 sm:p-6 flex flex-col justify-between">
                     <div>
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex justify-between items-start mb-4 gap-2">
                         <div>
-                          <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
-                            Software AI Vision Engine · Topologi Kamera Sensor
+                          <span className="text-[11px] font-bold text-sky-700 uppercase tracking-wider block">
+                            Cloud AI Vision · Topologi Kamera
                           </span>
-                          <h2 className="text-base font-bold text-[#263A35] font-display mt-0.5">
+                          <h2 className="text-base sm:text-lg font-bold text-[#102A24] font-display mt-1">
                             Optical Canopy &amp; Plume Classification
                           </h2>
                         </div>
-                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full border flex items-center gap-1.5 bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#4E635E]" />
+                        <span className="text-xs font-semibold px-3 py-1 rounded-full border flex items-center gap-1.5 bg-sky-50 text-sky-800 border-sky-200 shrink-0">
+                          <span className="w-2 h-2 rounded-full bg-sky-500" />
                           ESP32-CAM Vision
                         </span>
                       </div>
 
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4 flex justify-between items-center">
+                      <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-4 mb-4 flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-[#50645F] tracking-wider block">
+                          <span className="text-[11px] uppercase font-bold text-[#46655D] tracking-wider block">
                             Dominant Optical Classification
                           </span>
-                          <span className="text-lg font-bold text-[#263A35] font-display block mt-0.5">
+                          <span className="text-base sm:text-lg font-bold text-[#102A24] font-display block mt-0.5">
                             {wildfireResult ? visionPrediction : edgePrediction ? `${edgePrediction} (Edge AI)` : 'Standby / Belum Dianalisis'}
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-semibold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-semibold text-[#46655D] uppercase tracking-wider block">
                             Sumber Citra
                           </span>
-                          <span className="text-xs font-bold font-tabular text-[#4E635E] block mt-0.5">
+                          <span className="text-xs font-bold font-tabular text-[#0F766E] block mt-0.5">
                             {captureSource === 'camera'
                               ? 'Webcam Lokal'
                               : captureSource === 'upload'
@@ -2679,27 +2711,27 @@ export const App: React.FC = () => {
                         <div className="space-y-3.5 my-3">
                           {[
                             {
-                              label: 'Healthy Forest Canopy (Normal)',
+                              label: 'Healthy Forest Canopy (Non-Fire)',
                               value: visionProbs.healthy,
-                              color: '#4E635E',
+                              color: '#10B981',
                             },
                             {
                               label: 'Smoke Plume / Haze Indication',
                               value: visionProbs.smoke,
-                              color: '#EA580C',
+                              color: '#F59E0B',
                             },
                             {
                               label: 'Active Surface Fire / Thermal Glow',
                               value: visionProbs.fire,
-                              color: '#B43E1F',
+                              color: '#E11D48',
                             },
                           ].map((bar) => (
                             <div key={bar.label}>
-                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1.5">
+                              <div className="flex justify-between text-xs font-semibold text-[#102A24] mb-1.5">
                                 <span>{bar.label}</span>
-                                <span className="font-tabular text-[#50645F]">{bar.value.toFixed(1)}%</span>
+                                <span className="font-tabular text-[#46655D]">{bar.value.toFixed(1)}%</span>
                               </div>
-                              <div className="h-2.5 rounded-full bg-[#E2E0CB] overflow-hidden">
+                              <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden border border-slate-200/70">
                                 <div
                                   className="h-full rounded-full transition-all duration-500"
                                   style={{ width: `${bar.value}%`, backgroundColor: bar.color }}
@@ -2709,12 +2741,12 @@ export const App: React.FC = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="py-4 px-3 my-3 text-center text-xs text-[#50645F] bg-[#EFF3EF] rounded-lg border border-[#D6DCCE]">
-                          <p className="font-semibold text-[#263A35] mb-0.5">Belum Ada Inferensi Citra Visual</p>
-                          <p className="text-[11px] m-0">
+                        <div className="py-4 px-3 my-3 text-center text-xs text-[#46655D] bg-[#F2F8F5] rounded-xl border border-[#CFE2D9]">
+                          <p className="font-bold text-[#102A24] mb-1">Belum Ada Inferensi Citra Visual</p>
+                          <p className="text-xs m-0 leading-relaxed">
                             {edgePrediction
                               ? `Hasil Edge AI firmware: ${edgePrediction}${edgeConfidence !== null ? ` (Confidence: ${(edgeConfidence * 100).toFixed(0)}%)` : ''}. Jalankan Analisis Karhutla untuk inferensi cloud.`
-                              : 'Distribusi probabilitas visual hanya ditampilkan dari model inferensi citra terverifikasi.'}
+                              : 'Distribusi probabilitas visual ditampilkan dari model inferensi citra be-binus Railway.'}
                           </p>
                         </div>
                       )}
@@ -2729,37 +2761,37 @@ export const App: React.FC = () => {
 
             {/* 5. CAMERA STREAM CAPTURE SECTION (#cameraCapture) */}
             {(currentTab === 'overview' || currentTab === 'all' || currentTab === 'model_vision') && (
-              <section id="cameraCapture" className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs">
+              <section id="cameraCapture" className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-sky-500 p-5 sm:p-6">
                 {/* Header Bar with Title and Engine Pill */}
                 <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                   <div>
-                    <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                    <span className="text-[11px] font-bold text-sky-700 uppercase tracking-wider block">
                       Camera Subsystem · Edge &amp; Cloud AI Vision
                     </span>
-                    <h2 className="text-lg font-bold text-[#263A35] font-display mt-0.5">
+                    <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
                       Pemindaian Kanopi &amp; Verifikasi Visual Titik Api (Karhutla)
                     </h2>
                   </div>
 
                   {/* Vision Model & Optical State Indicator Badge */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#737F35] text-white shadow-xs flex items-center gap-1.5">
-                      <Flame size={12} className="text-[#F1D2A1]" />
+                    <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gradient-to-r from-[#0F766E] to-[#0284C7] text-white shadow-xs flex items-center gap-1.5">
+                      <Flame size={13} className="text-amber-300" />
                       <span>be-binus · MobileNetV2 TFLite</span>
                     </span>
 
                     {/* Optical State Indicator Badge */}
-                    <span className="text-xs font-semibold px-2.5 py-1.5 rounded-full border flex items-center gap-1.5 bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
+                    <span className="text-xs font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 bg-[#F2F8F5] text-[#102A24] border-[#CFE2D9]">
                       <span
                         className={`w-2 h-2 rounded-full ${cameraStatus === 'streaming'
                             ? isVideoReady
-                              ? 'bg-[#22C55E] animate-pulse'
-                              : 'bg-[#EAB308] animate-pulse'
+                              ? 'bg-emerald-500 animate-pulse'
+                              : 'bg-amber-500 animate-pulse'
                             : cameraStatus === 'captured'
-                              ? 'bg-[#737F35]'
+                              ? 'bg-sky-500'
                               : cameraStatus === 'permission_denied' || cameraStatus === 'device_error'
-                                ? 'bg-[#EF4444]'
-                                : 'bg-[#9CA3AF]'
+                                ? 'bg-rose-500'
+                                : 'bg-slate-400'
                           }`}
                       />
                       <span>
@@ -2779,8 +2811,8 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Action Toolbar: Camera Live vs Upload vs Retake vs Analyze */}
-                <div className="flex flex-wrap justify-between items-center gap-2 mb-4 p-2.5 rounded-xl bg-[#F5F4EE] border border-[#E2E0CB]">
+                {/* Action Toolbar */}
+                <div className="flex flex-wrap justify-between items-center gap-2 mb-4 p-3 rounded-xl bg-[#F2F8F5] border border-[#CFE2D9]">
                   <div className="flex items-center gap-2 flex-wrap">
                     {cameraStatus === 'streaming' ? (
                       <>
@@ -2788,17 +2820,17 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={handleCaptureFromVideo}
                           disabled={!isVideoReady}
-                          className="text-xs font-semibold px-3.5 py-1.5 rounded-full bg-[#737F35] hover:bg-[#5E682B] text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#737F35] disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Camera size={13} />
+                          <Camera size={14} />
                           <span>{isVideoReady ? 'Ambil Foto Frame' : 'Menyiapkan Kamera...'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={handleStopCamera}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-[#EFF3EF] text-[#263A35] border border-[#D6DCCE] flex items-center gap-1.5 transition-all cursor-pointer"
+                          className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-[#102A24] border border-[#CFE2D9] flex items-center gap-1.5 transition-all cursor-pointer"
                         >
-                          <VideoOff size={13} />
+                          <VideoOff size={14} />
                           <span>Tutup Kamera</span>
                         </button>
                       </>
@@ -2807,14 +2839,14 @@ export const App: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleStartCamera}
-                          className="text-xs font-semibold px-3.5 py-1.5 rounded-full bg-[#737F35] hover:bg-[#5E682B] text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#737F35]"
+                          className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-[#0F766E] hover:bg-[#0D5D57] text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                         >
-                          <Video size={13} />
+                          <Video size={14} />
                           <span>Buka Kamera Laptop/HP</span>
                         </button>
 
-                        <label className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-[#EFF3EF] text-[#263A35] border border-[#D6DCCE] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs">
-                          <Upload size={13} />
+                        <label className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-[#102A24] border border-[#CFE2D9] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs">
+                          <Upload size={14} className="text-sky-600" />
                           <span>Unggah Foto</span>
                           <input
                             ref={fileInputRef}
@@ -2829,11 +2861,11 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => handleFetchGatewayFrame(true)}
                           disabled={isFetchingGatewayFrame}
-                          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-[#EFF3EF] text-[#263A35] border border-[#D6DCCE] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                          className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white hover:bg-sky-50 text-[#102A24] border border-[#CFE2D9] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
                           title="Ambil frame JPEG terbaru dari cache gateway (/api/vision/latest-frame.jpg)"
                         >
-                          <Camera size={13} />
-                          <span>{isFetchingGatewayFrame ? 'Memuat Gateway...' : 'Ambil Frame Gateway (ESP32-CAM)'}</span>
+                          <Camera size={14} className="text-emerald-600" />
+                          <span>{isFetchingGatewayFrame ? 'Memuat Gateway...' : 'Frame ESP32-CAM'}</span>
                         </button>
                       </>
                     )}
@@ -2843,9 +2875,9 @@ export const App: React.FC = () => {
                         type="button"
                         onClick={handleRetake}
                         disabled={isCapturing}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white hover:bg-[#FEE2E2] text-[#B91C1C] border border-[#FECACA] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                        className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                       >
-                        <RotateCcw size={13} />
+                        <RotateCcw size={14} />
                         <span>Ulangi / Ganti Foto</span>
                       </button>
                     )}
@@ -2858,7 +2890,7 @@ export const App: React.FC = () => {
                       onClick={handleAnalyzeImage}
                       disabled={!capturedBlob || isCapturing}
                       aria-busy={isCapturing}
-                      className="text-xs font-semibold px-4 py-1.5 rounded-full bg-[#737F35] hover:bg-[#5E682B] text-white flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#737F35]"
+                      className="text-xs font-bold px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isCapturing ? (
                         <>
@@ -2867,7 +2899,7 @@ export const App: React.FC = () => {
                         </>
                       ) : (
                         <>
-                          <Sparkles size={13} className="text-[#F1D2A1]" />
+                          <Sparkles size={14} className="text-amber-300" />
                           <span>Analisis Karhutla (be-binus Railway)</span>
                         </>
                       )}
@@ -2875,10 +2907,10 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Error Banner if Inference or Camera Failed */}
+                {/* Error Banner */}
                 {inferenceError && (
-                  <div className="mb-4 p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-start gap-2.5 text-xs text-[#991B1B]">
-                    <AlertCircle size={15} className="shrink-0 mt-0.5 text-[#DC2626]" />
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-600" />
                     <div className="flex-1">
                       <span className="font-bold block">Pemberitahuan Sistem:</span>
                       <p className="mt-0.5 leading-relaxed m-0">{inferenceError}</p>
@@ -2889,9 +2921,8 @@ export const App: React.FC = () => {
                 {/* Main 2-Column Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
                   {/* Left: Video / Image Viewport */}
-                  <div className="lg:col-span-2 relative min-h-85 xl:min-h-95 bg-[#737F35] border border-[#5E682B] rounded-2xl overflow-hidden flex flex-col items-center justify-center text-center shadow-md">
-                    {/* Glassmorphic Ambient Highlight */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/[0.08] via-transparent to-black/[0.12] pointer-events-none" />
+                  <div className="lg:col-span-2 relative min-h-85 xl:min-h-95 bg-gradient-to-br from-[#0D2E27] via-[#124B47] to-[#0E5E6F] border border-emerald-400/30 rounded-2xl overflow-hidden flex flex-col items-center justify-center text-center shadow-lg">
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-black/[0.15] pointer-events-none" />
                     {cameraStatus === 'streaming' ? (
                       <>
                         <video
@@ -2923,9 +2954,8 @@ export const App: React.FC = () => {
                           }}
                           className="w-full h-full object-cover absolute inset-0"
                         />
-                        {/* Live Stream Top HUD */}
-                        <div className="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-mono border border-[#869440] flex items-center gap-1.5 shadow-xs">
-                          <span className={`w-2 h-2 rounded-full ${isVideoReady ? 'bg-[#22C55E] animate-ping' : 'bg-[#EAB308]'}`} />
+                        <div className="absolute top-3 left-3 z-10 px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-emerald-100 text-xs font-mono border border-white/15 flex items-center gap-1.5 shadow-xs">
+                          <span className={`w-2 h-2 rounded-full ${isVideoReady ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
                           <span>{isVideoReady ? 'LIVE DEVICE CAMERA · MEDIASTREAM' : 'MEMUAT FEED KAMERA...'}</span>
                         </div>
                       </>
@@ -2936,9 +2966,8 @@ export const App: React.FC = () => {
                           alt="Captured frame ready for analysis"
                           className="w-full h-full object-cover absolute inset-0"
                         />
-                        {/* Captured Frame HUD */}
-                        <div className="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-mono border border-[#869440] flex items-center gap-1.5 shadow-xs">
-                          <CheckCircle2 size={12} className="text-[#F1D2A1]" />
+                        <div className="absolute top-3 left-3 z-10 px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-emerald-100 text-xs font-mono border border-white/15 flex items-center gap-1.5 shadow-xs">
+                          <CheckCircle2 size={13} className="text-emerald-400" />
                           <span>
                             {captureSource === 'camera'
                               ? 'FRAME FOTO KAMERA'
@@ -2950,38 +2979,38 @@ export const App: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <div className="relative z-10 p-6 max-w-sm flex flex-col items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-[#5E682B] border border-[#869440] flex items-center justify-center text-[#F1D2A1] shadow-md">
-                            <Camera size={24} />
+                        <div className="relative z-10 p-6 max-w-md flex flex-col items-center gap-3.5">
+                          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-emerald-300/35 flex items-center justify-center text-emerald-200 shadow-lg">
+                            <Camera size={28} />
                           </div>
                           <div>
-                            <h3 className="text-sm font-bold text-white font-display">
+                            <h3 className="text-base font-bold text-white font-display">
                               Kamera Pemantau Kanopi Hutan &amp; Titik Api
                             </h3>
-                            <p className="text-xs text-[#F1D2A1]/90 mt-1 leading-relaxed">
-                              Buka kamera laptop/smartphone, muat frame dari gateway ESP32-CAM, atau unggah file foto untuk inferensi karhutla via be-binus Railway.
+                            <p className="text-xs sm:text-[13px] text-emerald-100/90 mt-1.5 leading-relaxed">
+                              Buka kamera laptop/smartphone, muat frame dari ESP32-CAM, atau unggah foto untuk inferensi karhutla via be-binus Railway.
                             </p>
                           </div>
-                          <div className="flex gap-2 mt-1 flex-wrap justify-center">
+                          <div className="flex gap-2.5 mt-1 flex-wrap justify-center">
                             <button
                               type="button"
                               onClick={handleStartCamera}
-                              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#5E682B] hover:bg-[#525B25] text-white border border-[#869440] flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                              className="text-xs font-bold px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#0D2E27] flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                             >
-                              <Video size={13} />
+                              <Video size={14} />
                               <span>Buka Kamera</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleFetchGatewayFrame(true)}
                               disabled={isFetchingGatewayFrame}
-                              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white hover:bg-[#FAF9F5] text-[#263A35] border border-[#DCE4E1] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                              className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                             >
-                              <Camera size={13} />
+                              <Camera size={14} />
                               <span>Frame Gateway</span>
                             </button>
-                            <label className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#5E682B] hover:bg-[#525B25] text-white border border-[#869440] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs">
-                              <Upload size={13} />
+                            <label className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-amber-300 hover:bg-amber-200 text-[#0D2E27] flex items-center gap-1.5 transition-all cursor-pointer shadow-sm">
+                              <Upload size={14} />
                               <span>Unggah Foto</span>
                               <input
                                 type="file"
@@ -2996,29 +3025,29 @@ export const App: React.FC = () => {
                     )}
 
                     {/* Bottom Viewport Overlay Telemetry */}
-                    <div className="absolute inset-x-3 bottom-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 z-10 pointer-events-none">
-                      <div className="px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-medium backdrop-blur-sm border border-[#869440] shadow-xs max-w-full truncate">
-                        {`Mode: Karhutla (be-binus Railway) · Rel: ${railPositionMm ?? '--'} mm · Source: ${captureSource === 'camera' ? 'Webcam' : captureSource === 'upload' ? 'Upload' : captureSource === 'gateway' ? 'Gateway ESP32-CAM' : 'Standby'}`}
+                    <div className="absolute inset-x-3 bottom-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 z-10 pointer-events-none">
+                      <div className="px-3 py-1.5 rounded-lg bg-black/55 text-emerald-100 text-[11px] font-medium backdrop-blur-md border border-white/15 max-w-full truncate">
+                        {`Mode: Karhutla · Rel: ${railPositionMm ?? '--'} mm · Source: ${captureSource === 'camera' ? 'Webcam' : captureSource === 'upload' ? 'Upload' : captureSource === 'gateway' ? 'Gateway ESP32-CAM' : 'Standby'}`}
                       </div>
 
                       <div className="flex flex-wrap items-center justify-start sm:justify-end gap-1.5">
                         {wildfireResult ? (
                           <>
-                            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#A6B49E]" />
+                            <span className="px-2.5 py-1 rounded-lg bg-black/55 text-emerald-200 text-[11px] font-bold backdrop-blur-md border border-emerald-400/30 flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
                               Non-Fire: {visionProbs.healthy.toFixed(1)}%
                             </span>
-                            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#FB923C]" />
+                            <span className="px-2.5 py-1 rounded-lg bg-black/55 text-amber-200 text-[11px] font-bold backdrop-blur-md border border-amber-400/30 flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="w-2 h-2 rounded-full bg-amber-400" />
                               Smoke: {visionProbs.smoke.toFixed(1)}%
                             </span>
-                            <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#F87171]" />
+                            <span className="px-2.5 py-1 rounded-lg bg-black/55 text-rose-200 text-[11px] font-bold backdrop-blur-md border border-rose-400/30 flex items-center gap-1.5 whitespace-nowrap">
+                              <span className="w-2 h-2 rounded-full bg-rose-400" />
                               Fire: {visionProbs.fire.toFixed(1)}%
                             </span>
                           </>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-mono border border-[#869440] shadow-xs">
+                          <span className="px-3 py-1 rounded-lg bg-black/55 text-emerald-100 text-[11px] font-mono border border-white/15">
                             {edgePrediction ? `Edge AI: ${edgePrediction}${edgeConfidence !== null ? ` (${(edgeConfidence * 100).toFixed(0)}%)` : ''} · Cloud: Standby` : 'Inferensi Cloud Siap (be-binus)'}
                           </span>
                         )}
@@ -3029,19 +3058,18 @@ export const App: React.FC = () => {
                   {/* Right: Telemetry & Classification Meters */}
                   <div className="flex flex-col justify-between gap-3">
                     <div className="space-y-2.5">
-                      {/* Timestamp & Engine Card */}
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5">
+                      <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3.5">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wider block">
                             Waktu Pemindaian Optik
                           </span>
                           {wildfireResult && (
-                            <span className="text-[10px] font-mono font-bold text-[#737F35] bg-[#EFF3EF] px-1.5 py-0.5 rounded border border-[#D6DCCE]">
+                            <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               {wildfireResult.inference_time_ms.toFixed(1)} ms
                             </span>
                           )}
                         </div>
-                        <span className="text-sm font-bold text-[#263A35] font-tabular block mt-1">
+                        <span className="text-sm font-bold text-[#102A24] font-tabular block mt-1">
                           {lastCaptureTime
                             ? new Date(lastCaptureTime).toLocaleTimeString('id-ID', {
                               hour: '2-digit',
@@ -3049,113 +3077,108 @@ export const App: React.FC = () => {
                               second: '2-digit',
                             })
                             : '--:--:--'}{' '}
-                          <span className="text-xs font-normal text-[#50645F]">
+                          <span className="text-xs font-normal text-[#46655D]">
                             ({captureSource === 'camera' ? 'Kamera' : captureSource === 'upload' ? 'Upload' : captureSource === 'gateway' ? 'Gateway ESP32-CAM' : 'Standby'})
                           </span>
                         </span>
-                        <span className="text-[10px] text-[#50645F] block mt-1 font-mono">
+                        <span className="text-[11px] text-[#46655D] block mt-1 font-mono">
                           {`Engine: ${wildfireResult?.model_name || 'MobileNetV2 (be-binus Railway)'}`}
                         </span>
                       </div>
 
-                      {/* Detected Pattern & Confidence Card */}
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 flex justify-between items-center">
+                      <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3.5 flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wider block">
                             Pola Citra Terdeteksi
                           </span>
-                          <span className="text-sm font-bold text-[#263A35] block mt-0.5 font-display">
+                          <span className="text-sm font-bold text-[#102A24] block mt-0.5 font-display">
                             {visionPrediction}
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
-                            Keyakinan (Confidence)
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wider block">
+                            Confidence
                           </span>
-                          <span className="text-sm font-bold text-[#737F35] font-tabular block mt-0.5">
+                          <span className="text-base font-extrabold text-[#0F766E] font-tabular block mt-0.5">
                             {wildfireResult ? `${wildfireResult.confidence_percentage.toFixed(1)}%` : '-'}
                           </span>
                         </div>
                       </div>
 
-                      {/* Classification Meter Bars */}
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 space-y-2.5">
+                      <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3.5 space-y-2.5">
                         <div className="flex justify-between items-center mb-0.5">
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wider block">
                             Klasifikasi Karhutla (3-Kelas)
                           </span>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md border bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md border bg-sky-50 text-sky-800 border-sky-200">
                             {inferenceStatus === 'analyzing'
                               ? 'Memproses...'
                               : inferenceStatus === 'success'
                                 ? 'Server Terverifikasi'
-                                : 'Frame Teranalisis'}
+                                : 'Siap Analisis'}
                           </span>
                         </div>
 
                         {wildfireResult ? (
                           <>
-                            {/* Wildfire Bar 1: Non-Fire */}
                             <div>
-                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
+                              <div className="flex justify-between text-xs font-semibold text-[#102A24] mb-1">
                                 <span>Healthy Canopy (Non-Fire)</span>
-                                <span className="font-tabular text-[#737F35] font-bold">
+                                <span className="font-tabular text-emerald-700 font-bold">
                                   {visionProbs.healthy.toFixed(1)}%
                                 </span>
                               </div>
-                              <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
+                              <div className="h-2 rounded-full bg-white border border-[#CFE2D9] overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-[#737F35] flora-meter-bar transition-all duration-500"
+                                  className="h-full rounded-full bg-emerald-500 flora-meter-bar transition-all duration-500"
                                   style={{ width: `${Math.min(100, Math.max(0, visionProbs.healthy))}%` }}
                                 />
                               </div>
                             </div>
 
-                            {/* Wildfire Bar 2: Smoke */}
                             <div>
-                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
+                              <div className="flex justify-between text-xs font-semibold text-[#102A24] mb-1">
                                 <span>Smoke Plume (Smoke)</span>
-                                <span className="font-tabular text-[#9A3412] font-bold">
+                                <span className="font-tabular text-amber-700 font-bold">
                                   {visionProbs.smoke.toFixed(1)}%
                                 </span>
                               </div>
-                              <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
+                              <div className="h-2 rounded-full bg-white border border-[#CFE2D9] overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-[#EA580C] flora-meter-bar transition-all duration-500"
+                                  className="h-full rounded-full bg-amber-500 flora-meter-bar transition-all duration-500"
                                   style={{ width: `${Math.min(100, Math.max(0, visionProbs.smoke))}%` }}
                                 />
                               </div>
                             </div>
 
-                            {/* Wildfire Bar 3: Fire */}
                             <div>
-                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
+                              <div className="flex justify-between text-xs font-semibold text-[#102A24] mb-1">
                                 <span>Surface Fire (Fire)</span>
-                                <span className="font-tabular text-[#7C2D12] font-bold">
+                                <span className="font-tabular text-rose-700 font-bold">
                                   {visionProbs.fire.toFixed(1)}%
                                 </span>
                               </div>
-                              <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
+                              <div className="h-2 rounded-full bg-white border border-[#CFE2D9] overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-[#B43E1F] flora-meter-bar transition-all duration-500"
+                                  className="h-full rounded-full bg-rose-600 flora-meter-bar transition-all duration-500"
                                   style={{ width: `${Math.min(100, Math.max(0, visionProbs.fire))}%` }}
                                 />
                               </div>
                             </div>
                           </>
                         ) : (
-                          <div className="py-4 px-3 text-center text-xs text-[#50645F] bg-[#EFF3EF] rounded-lg border border-[#D6DCCE]">
-                            <p className="font-semibold text-[#263A35] mb-0.5">Belum Ada Hasil Inferensi Citra</p>
-                            <p className="text-[11px] m-0">Muat frame dari gateway atau unggah foto lalu klik &quot;Analisis Karhutla&quot; untuk mengirim ke be-binus-production.up.railway.app.</p>
+                          <div className="py-4 px-3 text-center text-xs text-[#46655D] bg-white rounded-xl border border-[#CFE2D9]">
+                            <p className="font-bold text-[#102A24] mb-1">Belum Ada Hasil Inferensi Citra</p>
+                            <p className="text-xs m-0 leading-relaxed">Muat frame dari kamera atau unggah foto lalu klik &quot;Analisis Karhutla&quot;.</p>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] p-3 rounded-xl flex items-start gap-2 text-[11px] text-[#50645F] leading-relaxed">
-                      <Info size={14} className="shrink-0 mt-0.5 text-[#4E635E]" />
+                    <div className="bg-sky-50/70 border border-sky-200 p-3 rounded-xl flex items-start gap-2 text-xs text-sky-900 leading-relaxed">
+                      <Info size={15} className="shrink-0 mt-0.5 text-sky-600" />
                       <p className="m-0">
-                        Endpoint aktif: <code className="font-mono text-[#263A35]">be-binus-production.up.railway.app</code> (<code className="font-mono">/api/v1/predict</code> &amp; ESP32-CAM <code className="font-mono">/predict/fire</code>).
+                        Endpoint aktif: <code className="font-mono font-semibold text-[#102A24]">be-binus-production.up.railway.app</code> (<code className="font-mono">/api/v1/predict</code> &amp; <code className="font-mono">/predict/fire</code>).
                       </p>
                     </div>
                   </div>
@@ -3166,18 +3189,22 @@ export const App: React.FC = () => {
             {/* 6. 4-DOF ROBOT ARM, SLIDER & EMQX WSS CONTROL (#device-control) */}
             {(currentTab === 'overview' || currentTab === 'all') && (
               <>
-                <section id="device-control" className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs">
+                <section id="device-control" className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-teal-600 p-5 sm:p-6">
                   <div className="flex justify-between items-start mb-4 flex-wrap gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
-                        Actuator &amp; Robotic Subsystem · L298N Slider + 4-DoF Arm + VL53L0X + 5-Ch Flame
+                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
+                        Actuator &amp; Robotic Subsystem · L298N + 4-DoF Arm + VL53L0X + 5-Ch Flame
                       </span>
-                      <h2 className="text-lg font-bold text-[#263A35] font-display">
+                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
                         Kontrol Lengan Robot 4-DoF &amp; Scanner Rel — {railPositionMm !== null ? `${railPositionMm} / 1200 mm` : 'Standby'}
                       </h2>
                     </div>
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full border bg-[#EFF3EF] text-[#4E635E] border-[#A6B49E] flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                      <span className={`w-2 h-2 rounded-full ${isLiveTelemetry && !isTelemetryStale ? 'bg-[#16A34A] animate-pulse' : 'bg-[#4E635E]'}`} />
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                      isLiveTelemetry && !isTelemetryStale
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                       {systemState
                         ? `${systemState} · ${movementStatus === 'idle' ? 'READY' : movementStatus.replace(/_/g, ' ').toUpperCase()}`
                         : movementStatus === 'idle'
@@ -3187,37 +3214,39 @@ export const App: React.FC = () => {
                   </div>
 
                   {/* Visual Rail Track Progress Bar */}
-                  <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 text-xs font-bold text-[#263A35] mb-2 font-tabular">
-                      <span className={limitLeft ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
+                  <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-4 mb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 text-xs font-bold text-[#102A24] mb-2 font-tabular">
+                      <span className={limitLeft ? 'text-rose-600' : 'text-emerald-700'}>
                         SW1 Left (Z1): {limitLeft ? 'ACTIVE (0mm)' : 'CLEAR'}
                       </span>
-                      <span className="text-[#4E635E]">
+                      <span className="text-[#0F766E]">
                         Zona: {zone ?? '--'} · Posisi Rel: {railPositionMm !== null ? `${railPositionMm} mm (${((railPositionMm / 1200) * 100).toFixed(0)}%)` : 'Indeterminate (Standby)'}
                       </span>
-                      <span className={limitRight ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
+                      <span className={limitRight ? 'text-rose-600' : 'text-emerald-700'}>
                         SW2 Right (Z3): {limitRight ? 'ACTIVE (1200mm)' : 'CLEAR'}
                       </span>
                     </div>
-                    <div className="h-3 rounded-full bg-[#E2E0CB] relative overflow-hidden">
+                    <div className="h-3 rounded-full bg-white border border-[#CFE2D9] relative overflow-hidden">
                       <div
-                        className="h-full bg-[#4E635E] rounded-full transition-all duration-300"
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full transition-all duration-300"
                         style={{ width: `${railPositionMm !== null ? (railPositionMm / 1200) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
 
                   {/* Direct EMQX WSS (Port 8084) Connection & Fail-Closed Safety Gate */}
-                  <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4 space-y-3">
+                  <div className="bg-gradient-to-r from-[#F2F8F5] to-[#EFF7FA] border border-[#CFE2D9] rounded-xl p-4 mb-4 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck size={16} className={actuatorArmed ? 'text-[#16A34A]' : 'text-[#8A570C]'} />
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${actuatorArmed ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
+                          <ShieldCheck size={18} />
+                        </div>
                         <div>
-                          <span className="text-xs font-bold text-[#263A35] block">
+                          <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
                             EMQX Cloud Direct WSS (Port 8084) &amp; Fail-Closed Safety Gate
                           </span>
-                          <span className="text-[11px] text-[#50645F]">
-                            Status WSS: <strong className="uppercase">{mqttWssStatus}</strong> · Kredensial tidak disimpan di kode statis (session operator).
+                          <span className="text-xs text-[#46655D]">
+                            Status WSS: <strong className={`uppercase ${mqttWssStatus === 'connected' ? 'text-emerald-700' : 'text-amber-700'}`}>{mqttWssStatus}</strong> · Koneksi otomatis aktif (subscribe read-only sampai di-arm).
                           </span>
                         </div>
                       </div>
@@ -3225,10 +3254,10 @@ export const App: React.FC = () => {
                         type="button"
                         onClick={() => setActuatorArmed((prev) => !prev)}
                         disabled={mqttWssStatus !== 'connected'}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                           actuatorArmed
-                            ? 'bg-[#DC2626] text-white border-[#B91C1C]'
-                            : 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
+                            ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
+                            : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                         }`}
                       >
                         {actuatorArmed ? '🔓 ARMED · SIAP EKSEKUSI' : '🔒 TERKUNCI (ARM AKTUATOR)'}
@@ -3242,7 +3271,7 @@ export const App: React.FC = () => {
                         onChange={(e) => setMqttHostInput(e.target.value)}
                         placeholder="Host EMQX (emqxsl.com)"
                         aria-label="Host Broker EMQX WSS"
-                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
                       />
                       <input
                         type="text"
@@ -3250,7 +3279,7 @@ export const App: React.FC = () => {
                         onChange={(e) => setMqttUserInput(e.target.value)}
                         placeholder="Username EMQX"
                         aria-label="Username Broker EMQX"
-                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
                       />
                       <input
                         type="password"
@@ -3258,13 +3287,13 @@ export const App: React.FC = () => {
                         onChange={(e) => setMqttPassInput(e.target.value)}
                         placeholder="Password EMQX"
                         aria-label="Password Broker EMQX"
-                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
                       />
                       {mqttWssStatus === 'connected' ? (
                         <button
                           type="button"
                           onClick={handleDisconnectMqttWss}
-                          className="px-3 py-2 rounded-lg bg-[#FEEAEA] text-[#961C1C] border border-[#FCCECE] text-xs font-bold cursor-pointer hover:bg-[#FECACA]"
+                          className="px-3 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold cursor-pointer hover:bg-rose-100"
                         >
                           Putuskan WSS :8084
                         </button>
@@ -3272,7 +3301,7 @@ export const App: React.FC = () => {
                         <button
                           type="submit"
                           disabled={mqttWssStatus === 'connecting'}
-                          className="px-3 py-2 rounded-lg bg-[#5E682B] hover:bg-[#525B25] text-white border border-[#869440] text-xs font-bold cursor-pointer disabled:opacity-50"
+                          className="px-3 py-2 rounded-xl bg-[#0F766E] hover:bg-[#0D5D57] text-white text-xs font-bold cursor-pointer disabled:opacity-50"
                         >
                           {mqttWssStatus === 'connecting' ? 'Menghubungkan...' : 'Hubungkan EMQX WSS :8084'}
                         </button>
@@ -3280,7 +3309,7 @@ export const App: React.FC = () => {
                     </form>
 
                     {mqttWssError && (
-                      <div className="p-2.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[11px] text-[#991B1B]">
+                      <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
                         {mqttWssError}
                       </div>
                     )}
@@ -3288,15 +3317,15 @@ export const App: React.FC = () => {
 
                   {/* Live 4-DoF Arm Servo, VL53L0X ToF, Relay & 5-Ch Flame Array */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5">
-                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block mb-2">
-                        4-DoF Arm Servo Angles (GPIO 13, 14, 15, 5)
+                    <div className="bg-violet-50/50 border border-violet-200 rounded-xl p-3.5">
+                      <span className="text-[11px] font-bold text-violet-800 uppercase tracking-wider block mb-2">
+                        4-DoF Arm Servos (GPIO 13, 14, 15, 5)
                       </span>
                       <div className="grid grid-cols-4 gap-1.5 text-center font-tabular">
                         {['Base J1', 'Shld J2', 'Elbw J3', 'Nozl J4'].map((label, idx) => (
-                          <div key={label} className="bg-white border border-[#DCE4E1] rounded-lg p-1.5">
-                            <span className="text-[9px] text-[#50645F] block">{label}</span>
-                            <span className="text-xs font-bold text-[#263A35]">
+                          <div key={label} className="bg-white border border-violet-200 rounded-lg p-2">
+                            <span className="text-[11px] text-[#46655D] block">{label}</span>
+                            <span className="text-xs font-extrabold text-violet-900">
                               {isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[idx] === 'number'
                                 ? `${servoAngles[idx]}°`
                                 : '--'}
@@ -3306,23 +3335,23 @@ export const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5">
-                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block mb-2">
+                    <div className="bg-rose-50/40 border border-rose-200 rounded-xl p-3.5">
+                      <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block mb-2">
                         5-Ch Flame Array (GPIO 25, 26, 27, 32, 33)
                       </span>
-                      <div className="grid grid-cols-5 gap-1 text-center font-mono text-[10px]">
+                      <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[11px]">
                         {[0, 1, 2, 3, 4].map((ch) => {
                           const val = isLiveTelemetry && !isTelemetryStale && flameChannels ? flameChannels[ch] : undefined;
                           const isFire = typeof val === 'number' && val > 0;
                           return (
                             <div
                               key={ch}
-                              className={`rounded-lg p-1.5 border font-bold ${
+                              className={`rounded-lg p-2 border font-bold ${
                                 val === undefined
-                                  ? 'bg-white border-[#DCE4E1] text-[#50645F]'
+                                  ? 'bg-white border-slate-200 text-slate-500'
                                   : isFire
-                                    ? 'bg-[#FEEAEA] border-[#DC2626] text-[#961C1C] animate-pulse'
-                                    : 'bg-[#EFF3EF] border-[#A6B49E] text-[#263A35]'
+                                    ? 'bg-rose-600 border-rose-700 text-white animate-pulse'
+                                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
                               }`}
                             >
                               <div>FL{ch}</div>
@@ -3333,10 +3362,10 @@ export const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 flex flex-col justify-between">
+                    <div className="bg-teal-50/50 border border-teal-200 rounded-xl p-3.5 flex flex-col justify-between">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#50645F] font-semibold">VL53L0X ToF Jarak:</span>
-                        <span className="font-bold font-tabular text-[#263A35]">
+                        <span className="text-[#46655D] font-semibold">VL53L0X ToF Jarak:</span>
+                        <span className="font-bold font-tabular text-[#102A24]">
                           {isLiveTelemetry && !isTelemetryStale && typeof distanceMm === 'number'
                             ? distanceMm >= 9000
                               ? 'Belum Terdeteksi'
@@ -3344,9 +3373,9 @@ export const App: React.FC = () => {
                             : 'Unavailable'}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center text-xs mt-1.5">
-                        <span className="text-[#50645F] font-semibold">Pompa (GPIO 23):</span>
-                        <span className={`font-bold ${pumpLockout ? 'text-[#B45309]' : pumpStatus ? 'text-[#15803D]' : 'text-[#263A35]'}`}>
+                      <div className="flex justify-between items-center text-xs mt-2">
+                        <span className="text-[#46655D] font-semibold">Pompa (GPIO 23):</span>
+                        <span className={`font-bold ${pumpLockout ? 'text-amber-700' : pumpStatus ? 'text-emerald-700' : 'text-[#102A24]'}`}>
                           {!isLiveTelemetry || isTelemetryStale || pumpStatus === null
                             ? 'Standby'
                             : pumpLockout
@@ -3356,9 +3385,9 @@ export const App: React.FC = () => {
                                 : 'MATI (OFF)'}
                         </span>
                       </div>
-                      <div className="flex justify-between items-center text-xs mt-1.5">
-                        <span className="text-[#50645F] font-semibold">Ventilasi / Alarm Gas:</span>
-                        <span className="font-bold text-[#263A35]">
+                      <div className="flex justify-between items-center text-xs mt-2">
+                        <span className="text-[#46655D] font-semibold">Ventilasi / Alarm Gas:</span>
+                        <span className="font-bold text-[#102A24]">
                           {isLiveTelemetry && !isTelemetryStale
                             ? `${ventilationActive ? 'FAN ON' : 'FAN OFF'} · ${gasAlarmActive ? 'ALARM!' : 'AMAN'}`
                             : 'Standby'}
@@ -3377,9 +3406,9 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => handleRailCommand('L')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <ArrowLeft size={14} />
+                      <ArrowLeft size={15} />
                       <span>Move Left (L)</span>
                     </button>
 
@@ -3387,9 +3416,9 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => handleRailCommand('S')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-amber-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Square size={14} />
+                      <Square size={15} />
                       <span>Stop Motor (S)</span>
                     </button>
 
@@ -3397,19 +3426,19 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => handleRailCommand('R')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <span>Move Right (R)</span>
-                      <ArrowRight size={14} />
+                      <ArrowRight size={15} />
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleRailCommand('C')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#5E682B] hover:bg-[#525B25] text-white border-[#869440] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#0F766E] hover:bg-[#0D5D57] text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Camera size={14} />
+                      <Camera size={15} />
                       <span>Capture ESP32-CAM (C)</span>
                     </button>
                   </div>
@@ -3420,9 +3449,9 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => dispatchRobotCommand('CMD_RETRACT_ARM', 'Tarik Lengan ke Posisi Parkir')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#F2F8F5] text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Crosshair size={13} />
+                      <Crosshair size={14} className="text-sky-600" />
                       <span>Retract Arm (Park)</span>
                     </button>
 
@@ -3430,9 +3459,9 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#F2F8F5] text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <ShieldCheck size={13} />
+                      <ShieldCheck size={14} className="text-emerald-600" />
                       <span>Park Safe Zone</span>
                     </button>
 
@@ -3440,9 +3469,9 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => dispatchRobotCommand('CMD_EMERGENCY_STOP', 'EMERGENCY STOP DARURAT')}
                       disabled={mqttWssStatus !== 'connected'}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-[#DC2626] hover:bg-[#B91C1C] text-white border-[#991B1B] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <AlertOctagon size={13} />
+                      <AlertOctagon size={14} />
                       <span>EMERGENCY STOP</span>
                     </button>
 
@@ -3450,40 +3479,40 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset Emergency Stop')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-[#FEF7E8] hover:bg-[#FDE3B5] text-[#8A570C] border-[#FDE3B5] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <RotateCcw size={13} />
+                      <RotateCcw size={14} />
                       <span>Reset E-STOP</span>
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors rounded-xl p-3 flex items-center justify-between shadow-2xs">
-                      <span className="text-[10px] font-semibold text-[#50645F] uppercase tracking-wider">
+                    <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-[#46655D] uppercase tracking-wider">
                         Command Dispatch
                       </span>
-                      <span className="text-xs font-bold text-[#263A35] capitalize">
+                      <span className="text-xs font-bold text-[#102A24] capitalize">
                         {movementStatus.replace(/_/g, ' ')}
                       </span>
                     </div>
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors rounded-xl p-3 flex items-center justify-between shadow-2xs">
-                      <span className="text-[10px] font-semibold text-[#50645F] uppercase tracking-wider">
+                    <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-[#46655D] uppercase tracking-wider">
                         Last Command Sent
                       </span>
-                      <span className="text-xs font-bold font-tabular text-[#263A35]">
+                      <span className="text-xs font-bold font-tabular text-[#102A24]">
                         {lastCommand ? `Cmd '${lastCommand}'` : 'None'}
                       </span>
                     </div>
-                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors rounded-xl p-3 flex items-center justify-between shadow-2xs">
-                      <span className="text-[10px] font-semibold text-[#50645F] uppercase tracking-wider">
+                    <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-[#46655D] uppercase tracking-wider">
                         Limit Switches
                       </span>
                       <div className="flex items-center gap-2 text-xs font-bold font-tabular">
-                        <span className={limitLeft ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
+                        <span className={limitLeft ? 'text-rose-600' : 'text-emerald-700'}>
                           L: {limitLeft ? 'ACTIVE' : 'CLEAR'}
                         </span>
-                        <span className="text-[#50645F]/40">|</span>
-                        <span className={limitRight ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
+                        <span className="text-slate-300">|</span>
+                        <span className={limitRight ? 'text-rose-600' : 'text-emerald-700'}>
                           R: {limitRight ? 'ACTIVE' : 'CLEAR'}
                         </span>
                       </div>
@@ -3492,25 +3521,25 @@ export const App: React.FC = () => {
                 </section>
 
                 {/* 7. ACTION COMMAND SOLUTIONS & MITIGATION (#treatment) */}
-                <section className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs" id="treatment">
+                <section className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-emerald-500 p-5 sm:p-6" id="treatment">
                   <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                     <div>
-                      <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
                         Executable Robotic Solvers · 4 Kondisi Sensor Onboard
                       </span>
-                      <h2 className="text-lg font-bold text-[#263A35] font-display">
+                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
                         Pusat Solusi Perintah Aksi (Kering · Basah · Kebakaran · Gas Beracun)
                       </h2>
                     </div>
                     <span
                       className={`text-xs font-bold px-3 py-1 rounded-full border ${
                         !isLiveTelemetry || isTelemetryStale || !envCondition
-                          ? 'bg-[#EFF3EF] text-[#50645F] border-[#D6DCCE]'
+                          ? 'bg-slate-100 text-slate-600 border-slate-200'
                           : envCondition === 'KEBAKARAN' || envCondition === 'GAS_BERACUN'
-                            ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
-                            : envCondition === 'KERING' || envCondition === 'BASAH'
-                              ? 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
-                              : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : envCondition === 'KERING' || envCondition === 'BASAH' || envCondition === 'FAULT'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       }`}
                     >
                       Kondisi Aktif: {isLiveTelemetry && !isTelemetryStale && envCondition ? envCondition : 'STANDBY'}
@@ -3518,18 +3547,18 @@ export const App: React.FC = () => {
                   </div>
 
                   {/* Active Recommendation Execute Bar */}
-                  <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="bg-gradient-to-r from-[#F2F8F5] to-[#F4F9FC] border border-[#CFE2D9] rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
                         Rekomendasi Eksekusi Firmware Real-Time
                       </span>
-                      <div className="text-sm font-bold text-[#263A35] mt-0.5 truncate">
+                      <div className="text-sm sm:text-[15px] font-bold text-[#102A24] mt-0.5 truncate">
                         {isLiveTelemetry && !isTelemetryStale && (commandLabel || actionCommand)
                           ? `${commandLabel || actionCommand} (${actionCommand || 'CMD_IDLE'})`
                           : 'Menunggu telemetri kondisi sensor dari ESP32 Main...'}
                       </div>
                       {commandPayload ? (
-                        <code className="text-[10px] font-mono text-[#4E635E] block mt-0.5 truncate">
+                        <code className="text-xs font-mono text-[#0F766E] block mt-0.5 truncate">
                           Payload: {typeof commandPayload === 'string' ? commandPayload : JSON.stringify(commandPayload)}
                         </code>
                       ) : null}
@@ -3560,24 +3589,24 @@ export const App: React.FC = () => {
                         !actionCommand ||
                         actionCommand === 'CMD_IDLE'
                       }
-                      className="shrink-0 px-4 py-2.5 rounded-xl bg-[#5E682B] hover:bg-[#525B25] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="shrink-0 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#0F766E] to-[#059669] hover:from-[#0D5D57] hover:to-[#047857] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Send size={13} />
+                      <Send size={14} />
                       <span>Eksekusi Perintah Aktif</span>
                     </button>
                   </div>
 
                   {/* 4 Condition Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
-                    <div className={`rounded-xl p-3.5 border ${envCondition === 'KERING' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEF7E8] border-[#D97706]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
-                          <Droplet size={14} className="text-[#D97706]" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-2">
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-amber-500 ${envCondition === 'KERING' && isLiveTelemetry && !isTelemetryStale ? 'bg-amber-50 border-amber-300' : 'bg-[#FFFDF7] border-amber-200/80'}`}>
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                        <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
+                          <Droplet size={15} className="text-amber-500" />
                           1. KERING (Soil &lt; 30% / Heat Stress)
                         </span>
-                        <span className="text-[10px] font-mono text-[#50645F]">Pompa &amp; Misting</span>
+                        <span className="text-[11px] font-mono text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md">Pompa &amp; Misting</span>
                       </div>
-                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
                         Menyalakan pompa irigasi atau penyiraman kabut otomatis dengan batas watchdog 12 detik.
                       </p>
                       <div className="flex flex-wrap gap-2">
@@ -3585,7 +3614,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_START_IRRIGATION', 'Aktifkan Irigasi (KERING)')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-[#5E682B] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Start Irrigation
                         </button>
@@ -3593,22 +3622,22 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_START_MISTING', 'Aktifkan Misting Kanopi')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Start Misting
                         </button>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-3.5 border ${envCondition === 'BASAH' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#EFF3EF] border-[#4E635E]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
-                          <ShieldCheck size={14} className="text-[#4E635E]" />
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-emerald-500 ${envCondition === 'BASAH' && isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-50 border-emerald-300' : 'bg-[#F5FBF8] border-emerald-200/80'}`}>
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                        <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
+                          <ShieldCheck size={15} className="text-emerald-600" />
                           2. BASAH (Soil &gt; 75% / Jenuh)
                         </span>
-                        <span className="text-[10px] font-mono text-[#50645F]">Interlock Lockout</span>
+                        <span className="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-md">Interlock Lockout</span>
                       </div>
-                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
                         Mengunci pompa irigasi agar tidak over-watering dan memarkirkan lengan ke zona aman.
                       </p>
                       <div className="flex flex-wrap gap-2">
@@ -3616,7 +3645,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_PUMP_LOCKOUT', 'Kunci Pompa (BASAH)')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-[#4E635E] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Pump Lockout
                         </button>
@@ -3624,7 +3653,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-900 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Park Safe Zone
                         </button>
@@ -3632,30 +3661,30 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_UNLOCK_PUMP', 'Buka Kunci Pompa')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#8A570C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Unlock Pump
                         </button>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-3.5 border ${envCondition === 'KEBAKARAN' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEEAEA] border-[#DC2626]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
-                          <Flame size={14} className="text-[#DC2626]" />
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-rose-500 ${envCondition === 'KEBAKARAN' && isLiveTelemetry && !isTelemetryStale ? 'bg-rose-50 border-rose-300' : 'bg-[#FFF8F9] border-rose-200/80'}`}>
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                        <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
+                          <Flame size={15} className="text-rose-600" />
                           3. KEBAKARAN (Flame / ToF / Vision Fire)
                         </span>
-                        <span className="text-[10px] font-mono text-[#961C1C]">Staged Suppression</span>
+                        <span className="text-[11px] font-mono text-rose-800 bg-rose-100/70 px-2 py-0.5 rounded-md">Staged Suppression</span>
                       </div>
-                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
-                        Menggerakkan rel + lengan 4-DoF menuju zona api dengan verifikasi jarak VL53L0X (150–800 mm).
+                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
+                        Menggerakkan rel + lengan 4-DoF menuju zona api dengan verifikasi jarak VL53L0X (120–380 mm).
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_FIRE_SUPPRESSION', 'Pemadaman Api Aktif', { duration: 4000 })}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-[#DC2626] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Fire Suppression
                         </button>
@@ -3663,7 +3692,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_FIRE_SCAN_START', 'Mulai Scan Zona Api')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#FECACA] text-[#961C1C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-rose-300 text-rose-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Fire Scan Start
                         </button>
@@ -3671,22 +3700,22 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_EVACUATE_OPPOSITE', 'Evakuasi Lengan ke Zona Aman')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-[#102A24] text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Evacuate Opposite
                         </button>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-3.5 border ${envCondition === 'GAS_BERACUN' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEF7E8] border-[#EA580C]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
-                          <Wind size={14} className="text-[#EA580C]" />
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-violet-500 ${envCondition === 'GAS_BERACUN' && isLiveTelemetry && !isTelemetryStale ? 'bg-violet-50 border-violet-300' : 'bg-[#FAF8FF] border-violet-200/80'}`}>
+                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                        <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
+                          <Wind size={15} className="text-violet-600" />
                           4. GAS_BERACUN (MQ-135 &gt; Ambang / Smoke)
                         </span>
-                        <span className="text-[10px] font-mono text-[#9A3412]">Ventilasi &amp; Alarm</span>
+                        <span className="text-[11px] font-mono text-violet-800 bg-violet-100/70 px-2 py-0.5 rounded-md">Ventilasi &amp; Alarm</span>
                       </div>
-                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
                         Mengaktifkan ventilasi udara &amp; alarm gas berbahaya serta memicu verifikasi frame ESP32-CAM.
                       </p>
                       <div className="flex flex-wrap gap-2">
@@ -3694,7 +3723,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_VENTILATION_ACTIVE', 'Aktifkan Ventilasi Gas')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-[#EA580C] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Ventilation Active
                         </button>
@@ -3702,7 +3731,7 @@ export const App: React.FC = () => {
                           type="button"
                           onClick={() => dispatchRobotCommand('CMD_TRIGGER_GAS_ALARM', 'Picu Alarm Gas Beracun')}
                           disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3 py-1.5 rounded-lg bg-white border border-[#FDE3B5] text-[#8A570C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3.5 py-2 rounded-xl bg-white border border-violet-300 text-violet-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Trigger Gas Alarm
                         </button>
@@ -3714,25 +3743,25 @@ export const App: React.FC = () => {
                 {/* 7B. TREATMENT & IRRIGATION / SUPPRESSION GUIDANCE */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
                   {/* Left: Treatment & Action Guidance */}
-                  <section className="flora-card p-5 sm:p-6 flex flex-col justify-between shadow-xs">
+                  <section className="flora-card p-5 sm:p-6 flex flex-col justify-between">
                     <div>
-                      <div className="flex justify-between items-start mb-3">
+                      <div className="flex justify-between items-start mb-3 gap-2">
                         <div>
-                          <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                          <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
                             Forestry &amp; Agronomic Decision Support
                           </span>
-                          <h2 className="text-base font-bold text-[#263A35] font-display">
+                          <h2 className="text-base sm:text-lg font-bold text-[#102A24] font-display mt-0.5">
                             Mitigation &amp; Action Guidance (SOP)
                           </h2>
                         </div>
                         <span
-                          className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${!isLiveTelemetry || isTelemetryStale || !hazardResult
-                              ? 'bg-[#EFF3EF] text-[#50645F] border-[#D6DCCE]'
+                          className={`text-xs font-bold px-3 py-1 rounded-full border shrink-0 ${!isLiveTelemetry || isTelemetryStale || !hazardResult
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
                               : hazardResult.riskLevel === 'HIGH'
-                                ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
                                 : hazardResult.riskLevel === 'MODERATE'
-                                  ? 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
-                                  : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             }`}
                         >
                           {isLiveTelemetry && !isTelemetryStale && hazardResult ? `${hazardResult.riskLevel} Priority` : 'STANDBY'}
@@ -3740,10 +3769,10 @@ export const App: React.FC = () => {
                       </div>
 
                       <div className="my-3">
-                        <span className="text-xs font-bold text-[#263A35] block mb-2 font-display uppercase tracking-wider">
+                        <span className="text-xs font-bold text-[#102A24] block mb-2 font-display uppercase tracking-wider">
                           Recommended Action Checklist:
                         </span>
-                        <ul className="text-xs text-[#263A35] space-y-2 pl-4 list-disc font-medium">
+                        <ul className="text-xs sm:text-[13px] text-[#102A24] space-y-2 pl-4 list-disc font-medium">
                           {isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' && ffmc >= 89.5 && (
                             <li className="leading-relaxed">
                               <strong>FFMC Kritis ({ffmc.toFixed(1)} ≥ 89.5):</strong> Aktifkan penyiraman kabut (misting) pada zona penyangga untuk menurunkan keterbakaran serasah permukaan.
@@ -3760,8 +3789,8 @@ export const App: React.FC = () => {
                             </li>
                           )}
                           {(!isLiveTelemetry || isTelemetryStale) && (
-                            <li className="leading-relaxed text-[#50645F]">
-                              Menunggu stream telemetri aktif gateway untuk mengevaluasi checklist mitigasi secara live.
+                            <li className="leading-relaxed text-[#46655D]">
+                              Menunggu stream telemetri aktif EMQX WSS / Gateway untuk mengevaluasi checklist mitigasi secara live.
                             </li>
                           )}
                           <li className="leading-relaxed">
@@ -3771,63 +3800,63 @@ export const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-[#D6DCCE]">
-                      <p className="text-[11px] text-[#50645F] leading-relaxed m-0">
-                        Rekomendasi disusun otomatis berdasarkan output <code className="font-mono text-[#4E635E]">model_hazard.h</code> dan <code className="font-mono text-[#4E635E]">grenvis_sensor_model.h</code>.
+                    <div className="mt-4 pt-3 border-t border-[#D8E7E0]">
+                      <p className="text-xs text-[#46655D] leading-relaxed m-0">
+                        Rekomendasi disusun otomatis berdasarkan output <code className="font-mono text-[#0F766E]">model_hazard.h</code> dan <code className="font-mono text-[#0F766E]">grenvis_sensor_model.h</code>.
                       </p>
                     </div>
                   </section>
 
                   {/* Right: Irrigation & Canopy Cooling Log */}
-                  <section className="flora-card p-5 sm:p-6 flex flex-col justify-between shadow-xs">
+                  <section className="flora-card p-5 sm:p-6 flex flex-col justify-between">
                     <div>
                       <div className="mb-4">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                          <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
                             Irrigation &amp; Litter Wetting
                           </span>
-                          <span className="text-[11px] font-tabular text-[#50645F]">
-                            Soil moisture: <strong className="text-[#263A35]">{isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : 'Unavailable'}</strong> · FFMC:{' '}
-                            <strong className="text-[#263A35]">{isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? ffmc.toFixed(1) : 'Unavailable'}</strong>
+                          <span className="text-xs font-tabular text-[#46655D]">
+                            Soil: <strong className="text-[#102A24]">{isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : 'Unavailable'}</strong> · FFMC:{' '}
+                            <strong className="text-[#102A24]">{isLiveTelemetry && !isTelemetryStale && typeof ffmc === 'number' ? ffmc.toFixed(1) : 'Unavailable'}</strong>
                           </span>
                         </div>
-                        <h2 className="text-lg sm:text-xl font-bold text-[#263A35] font-display">
+                        <h2 className="text-lg font-bold text-[#102A24] font-display">
                           {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' && typeof ffmc === 'number'
                             ? (soilMoisture < 30 || ffmc >= 90
                               ? 'Attention Needed: Wetting Recommended'
                               : 'Soil & Fuel Moisture Sufficient')
                             : 'Mitigation Status: Standby Menunggu Telemetri'}
                         </h2>
-                        <p className="text-xs text-[#50645F] mt-1 leading-relaxed m-0">
-                          Catat tindakan penyiraman atau pendinginan serasah untuk memperbarui riwayat hidrasi dan log operasional mitigasi lapangan.
+                        <p className="text-xs sm:text-[13px] text-[#46655D] mt-1 leading-relaxed m-0">
+                          Catat tindakan penyiraman atau pendinginan serasah untuk memperbarui riwayat hidrasi dan log operasional lapangan.
                         </p>
                       </div>
 
                       {wateringEvents[0] ? (
-                        <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 my-3.5">
+                        <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3.5 my-3.5">
                           <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#50645F]">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#46655D]">
                               Last Recorded Wetting Event
                             </span>
-                            <span className="text-[10px] font-semibold text-[#263A35] bg-[#EFF3EF] px-2 py-0.5 rounded-md border border-[#A6B49E]">
+                            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                               Recorded
                             </span>
                           </div>
-                          <div className="text-sm font-bold font-display text-[#263A35]">
+                          <div className="text-sm font-bold font-display text-[#102A24]">
                             {new Date(wateringEvents[0].timestamp).toLocaleTimeString('id-ID', {
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
                             })}
                           </div>
-                          <div className="flex items-center gap-2 text-[11px] text-[#50645F] mt-1 font-tabular">
+                          <div className="flex items-center gap-2 text-xs text-[#46655D] mt-1 font-tabular">
                             <span>Soil Before: {typeof wateringEvents[0].soilBefore === 'number' ? `${wateringEvents[0].soilBefore.toFixed(1)}%` : '--'}</span>
-                            <span className="text-[#50645F]/40">·</span>
+                            <span className="text-slate-300">·</span>
                             <span className="truncate">{wateringEvents[0].note}</span>
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 my-3.5 text-center text-xs text-[#50645F]">
+                        <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-3.5 my-3.5 text-center text-xs text-[#46655D]">
                           Belum ada tindakan penyiraman tercatat pada sesi ini.
                         </div>
                       )}
@@ -3835,14 +3864,14 @@ export const App: React.FC = () => {
                       <button
                         onClick={handleRecordWatering}
                         aria-label="Catat tindakan penyiraman dan pendinginan kanopi hutan"
-                        className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-[#4E635E] hover:bg-[#3B4D49] text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-95 mt-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#4E635E]"
+                        className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-[#0F766E] hover:bg-[#0D5D57] text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-95 mt-2"
                       >
                         + Catat Penyiraman &amp; Pendinginan Kanopi
                       </button>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-[#D6DCCE] text-[11px] text-[#50645F]">
-                      Total kejadian penyiraman tercatat sesi ini: <strong className="text-[#263A35]">{wateringEvents.length}</strong>
+                    <div className="mt-4 pt-3 border-t border-[#D8E7E0] text-xs text-[#46655D]">
+                      Total kejadian penyiraman tercatat sesi ini: <strong className="text-[#102A24]">{wateringEvents.length}</strong>
                     </div>
                   </section>
                 </div>
@@ -3864,15 +3893,15 @@ export const App: React.FC = () => {
                 <section id="devices" className="scroll-mt-6 sm:scroll-mt-8">
                   <div className="flex justify-between items-start mb-4 flex-wrap gap-2">
                     <div>
-                      <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
                         Infrastructure Status
                       </span>
-                      <h2 className="text-lg font-bold text-[#263A35] font-display">
+                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display">
                         System &amp; Hardware Health Topology
                       </h2>
                     </div>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
-                      Hardware &amp; Subsystem Topology
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                      Hardware &amp; Cloud Topology
                     </span>
                   </div>
 
@@ -3881,59 +3910,74 @@ export const App: React.FC = () => {
                       {
                         label: 'NodeMCU ESP32-S Main',
                         status: isLiveTelemetry && !isTelemetryStale ? 'ONLINE LIVE' : 'OFFLINE',
+                        accent: 'border-t-emerald-500',
+                        badge: isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200',
                         detail: `Direct GPIO · Node: ${activeNodeId || 'ESP32-MAIN'} · ${mqttWssStatus === 'connected' ? 'WSS :8084' : 'SSE Gateway'}`,
                       },
                       {
                         label: 'ESP32-CAM Node',
                         status: gatewayFrameStatus === 'ready' && !gatewayFrameMeta?.isStale ? 'FRAME READY' : 'STANDBY',
+                        accent: 'border-t-sky-500',
+                        badge: 'bg-sky-50 text-sky-800 border-sky-200',
                         detail: `MAC: F8:B3:B7:A6:F3:9C · POST be-binus-production.up.railway.app/predict/fire`,
                       },
                       {
                         label: 'Railway Vision AI',
                         status: 'ACTIVE (HTTPS)',
+                        accent: 'border-t-indigo-500',
+                        badge: 'bg-indigo-50 text-indigo-800 border-indigo-200',
                         detail: 'be-binus-production.up.railway.app (MobileNetV2 TFLite · 3-Class)',
                       },
                       {
                         label: 'EMQX Cloud Broker',
                         status: mqttWssStatus === 'connected' ? 'WSS CONNECTED' : gatewayHealth?.mqttConnected ? 'TLS CONNECTED' : 'STANDBY',
+                        accent: 'border-t-teal-500',
+                        badge: mqttWssStatus === 'connected' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-teal-50 text-teal-800 border-teal-200',
                         detail: 'q2277711.ala.asia-southeast1.emqxsl.com · MQTTS :8883 & WSS :8084',
                       },
                       {
                         label: 'Lengan Robot 4-DoF + ToF',
                         status: systemState || 'STANDBY',
-                        detail: `Servo GPIO 13,14,15,5 · VL53L0X I2C (21,22): ${typeof distanceMm === 'number' ? `${distanceMm} mm` : '--'}`,
+                        accent: 'border-t-violet-500',
+                        badge: 'bg-violet-50 text-violet-800 border-violet-200',
+                        detail: `Servo GPIO 13,14,15,5 · VL53L0X I2C (21,22): ${typeof distanceMm === 'number' ? (distanceMm >= 9000 ? '>8m' : `${distanceMm} mm`) : '--'}`,
                       },
                       {
                         label: 'Sensor Onboard Node',
                         status: isLiveTelemetry && !isTelemetryStale ? 'STREAMING' : 'OFFLINE',
+                        accent: 'border-t-orange-500',
+                        badge: isLiveTelemetry && !isTelemetryStale ? 'bg-orange-50 text-orange-800 border-orange-200' : 'bg-slate-100 text-slate-600 border-slate-200',
                         detail: 'DHT22 (4) · Soil ADC (34) · MQ-135 (35) · Flame 5-Ch (25,26,27,32,33)',
                       },
                       {
                         label: 'Slider Rel L298N + Pompa',
                         status: pumpLockout ? 'LOCKOUT' : pumpStatus ? 'PUMP ON' : 'STANDBY',
+                        accent: 'border-t-amber-500',
+                        badge: pumpLockout ? 'bg-amber-50 text-amber-800 border-amber-200' : pumpStatus ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200',
                         detail: 'OUT3/OUT4 (16,17) · Limit (18,19) · Relay Pompa (23) · Zona 1-3',
                       },
                       {
                         label: 'Fail-Closed Safety Gate',
                         status: mqttWssStatus === 'connected' && actuatorArmed ? 'ARMED' : 'LOCKED',
+                        accent: 'border-t-rose-500',
+                        badge: mqttWssStatus === 'connected' && actuatorArmed ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-800 border-amber-200',
                         detail: mqttWssStatus === 'connected' && actuatorArmed ? 'WSS :8084 Aktif · Perintah 2-arah diizinkan' : 'Terkunci Aman · Aktifkan WSS & ARM AKTUATOR untuk kontrol',
                       },
                     ].map((dev) => (
                       <article
                         key={dev.label}
-                        className="flora-card flora-card-interactive p-4 shadow-xs flex flex-col justify-between min-h-24"
+                        className={`flora-card flora-card-interactive border-t-[3px] ${dev.accent} p-4 flex flex-col justify-between min-h-26`}
                       >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider">
+                        <div className="flex justify-between items-center mb-1.5 gap-2">
+                          <span className="text-[11px] font-bold text-[#46655D] uppercase tracking-wide truncate">
                             {dev.label}
                           </span>
-                          <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#EFF3EF] text-[#263A35] text-[9px] font-bold border border-[#A6B49E]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#4E635E] animate-pulse" />
+                          <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${dev.badge}`}>
                             {dev.status}
                           </span>
                         </div>
-                        <span className="text-xs font-bold text-[#263A35] block font-display mt-0.5">{dev.label}</span>
-                        <span className="text-[10px] font-mono text-[#50645F] block mt-1 truncate">
+                        <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block font-display mt-0.5">{dev.label}</span>
+                        <span className="text-[11px] font-mono text-[#46655D] block mt-1 truncate" title={dev.detail}>
                           {dev.detail}
                         </span>
                       </article>
@@ -3944,20 +3988,20 @@ export const App: React.FC = () => {
             )}
 
             {/* 10. FOOTER */}
-            <footer className="mt-12 py-8 border-t border-[#D6DCCE] text-center text-xs text-[#50645F]">
+            <footer className="mt-12 py-8 border-t border-[#CDE0D7] text-center text-xs text-[#46655D]">
               <div className="flex items-center justify-center gap-2 mb-1.5 flex-wrap">
-                <span className="font-bold text-[#263A35] font-display flex items-center gap-1.5">
+                <span className="font-bold text-[#102A24] font-display flex items-center gap-1.5">
                   <img src="/agrapatha-logo.png" alt="Logo AGRAPATHA" className="w-4 h-4 object-contain inline-block drop-shadow-xs" />
                   <span>AGRAPATHA</span>
                 </span>
                 <span>·</span>
                 <span>Smart Forest Fire &amp; Botanical AI Vision</span>
                 <span>·</span>
-                <span className="text-[#4E635E] font-semibold">
+                <span className="text-[#0F766E] font-semibold">
                   model_hazard.h (517 Montesinho) &amp; grenvis_sensor_model.h (TFLite Micro)
                 </span>
               </div>
-              <p className="text-[11px] text-[#50645F]/80 max-w-xl mx-auto leading-relaxed m-0">
+              <p className="text-xs text-[#46655D]/90 max-w-2xl mx-auto leading-relaxed m-0">
                 Hasil analisis model C header edge (<code className="font-mono">model_hazard.h</code> &amp;{' '}
                 <code className="font-mono">grenvis_sensor_model.h</code>) dan inferensi optik berfungsi sebagai sistem pendukung keputusan (decision support) peringatan dini kebakaran hutan dan kesehatan mikroklimat.
               </p>

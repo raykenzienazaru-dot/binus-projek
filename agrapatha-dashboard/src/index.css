@@ -1,60 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  /* Kak Kenzie's Five-Color Palette */
-  --palette-skyline: #4D6A75;
-  --palette-deep-ocean: #4E8577;
-  --palette-greenery: #56612E;
-  --palette-cliffside: #7E694F;
-  --palette-shadows: #2C2922;
+  /* AGRAPATHA Rich Botanical-Cybernetic Telemetry Palette */
+  --palette-skyline: #0284C7;
+  --palette-deep-ocean: #0F766E;
+  --palette-greenery: #059669;
+  --palette-cliffside: #D97706;
+  --palette-shadows: #102A24;
 
   /* Semantic Color Semantics */
-  --color-safe: #56612E;          /* Greenery: Safe/healthy/nominal */
-  --color-primary: #4E8577;       /* Deep Ocean: Primary UI accent */
-  --color-secondary: #4D6A75;     /* Skyline: Secondary slate-teal */
-  --color-stone: #7E694F;         /* Cliffside: Earthy warm stone */
-  --color-dark: #2C2922;          /* Shadows: Deep warm charcoal */
-  --color-warning-mod: #D97706;   /* Amber: Moderate warning */
-  --color-danger-high: #DC2626;   /* Red: High/Critical fire danger */
+  --color-safe: #059669;          /* Vivid Emerald: Safe/healthy/nominal */
+  --color-primary: #0F766E;       /* Deep Teal: Primary UI accent */
+  --color-secondary: #0284C7;     /* Ocean Sky: Secondary metric accent */
+  --color-stone: #D97706;         /* Warm Amber: Highlight/warning */
+  --color-dark: #102A24;          /* Deep Forest Ink */
+  --color-warning-mod: #F59E0B;   /* Rich Amber */
+  --color-danger-high: #E11D48;   /* Vivid Crimson Fire */
 
   /* Surface & Canvas Tokens */
-  --color-canvas: #F8FAF9;
+  --color-canvas: #ECF4F0;
   --color-surface: #FFFFFF;
-  --color-surface-subtle: #F1F5F3;
-  --color-border: #DCE4E1;
-  --color-text-main: #2C2922;
-  --color-text-muted: #4D6A75;
+  --color-surface-subtle: #F2F8F5;
+  --color-border: #CDE0D7;
+  --color-text-main: #102A24;
+  --color-text-muted: #46655D;
 
-  /* Backward-compatible FLORA aliases mapped to Kak Kenzie palette */
-  --flora-deep: #2C2922;
-  --flora-primary-dark: #2C2922;
-  --flora-primary: #4E8577;
-  --flora-secondary: #4D6A75;
-  --flora-accent: #56612E;
-  --flora-highlight: #EAEFED;
-  --flora-canvas: #F8FAF9;
+  /* Backward-compatible FLORA aliases */
+  --flora-deep: #102A24;
+  --flora-primary-dark: #0D2D26;
+  --flora-primary: #0F766E;
+  --flora-secondary: #0284C7;
+  --flora-accent: #059669;
+  --flora-highlight: #E6F4EE;
+  --flora-canvas: #ECF4F0;
   --flora-surface: #FFFFFF;
-  --flora-border: #DCE4E1;
-  --flora-ink: #2C2922;
-  --flora-muted: #4D6A75;
+  --flora-border: #CDE0D7;
+  --flora-ink: #102A24;
+  --flora-muted: #46655D;
 
   /* shadcn UI semantic tokens */
   --background: #FFFFFF;
-  --foreground: #2C2922;
-  --popover: #23312E;
-  --popover-foreground: #FFFFFF;
-  --muted: #F1F5F3;
-  --muted-foreground: #4D6A75;
-  --accent: #364844;
-  --accent-foreground: #FFFFFF;
-  --border: #364844;
-  --input: #DCE4E1;
-  --ring: #4E8577;
+  --foreground: #102A24;
+  --popover: #FFFFFF;
+  --popover-foreground: #102A24;
+  --muted: #F2F8F5;
+  --muted-foreground: #46655D;
+  --accent: #E6F4EE;
+  --accent-foreground: #0F2F28;
+  --border: #CDE0D7;
+  --input: #CDE0D7;
+  --ring: #0F766E;
 
-  /* Peach, Olive & Cream accent tokens */
-  --color-peach: #F1D2A1;
-  --color-olive: #737F35;
-  --color-cream: #EAD39D;
+  /* Mint, Gold & Coral accent tokens */
+  --color-peach: #FDE68A;
+  --color-olive: #059669;
+  --color-cream: #FEF3C7;
 }
 
 @theme {
@@ -121,31 +121,31 @@ body {
   animation: floraGreenShift 6s ease-in-out infinite;
 }
 
-/* Card Surface Styling from flora-six-zeta.vercel.app */
+/* Card Surface Styling with layered shadow & subtle vibrancy */
 .flora-card {
   background: #FFFFFF;
-  border: 1px solid #D6DCCE;
+  border: 1px solid #CBE0D6;
   border-radius: 18px;
-  box-shadow: 0 2px 10px rgba(38, 58, 53, 0.03);
+  box-shadow: 0 2px 6px rgba(15, 47, 40, 0.04), 0 12px 24px -10px rgba(15, 118, 110, 0.09);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .flora-card:hover {
-  border-color: #818C78;
-  box-shadow: 0 6px 18px rgba(38, 58, 53, 0.06);
+  border-color: #6EE7B7;
+  box-shadow: 0 4px 12px rgba(15, 47, 40, 0.06), 0 16px 28px -10px rgba(5, 150, 105, 0.14);
 }
 
 .flora-card-hero {
-  background: linear-gradient(135deg, #23312E, #364844 48%, #4E635E);
-  border: 1px solid #4E635E;
+  background: linear-gradient(135deg, #0D2D26 0%, #115E59 52%, #0284C7 100%);
+  border: 1px solid rgba(52, 211, 153, 0.35);
   border-radius: 20px;
   color: #FFFFFF;
-  box-shadow: 0 12px 32px rgba(38, 58, 53, 0.16);
+  box-shadow: 0 14px 34px -6px rgba(13, 45, 38, 0.28);
 }
 
 .flora-subtle-well {
-  background: #F5F4EE;
-  border: 1px solid #E2E0CB;
+  background: #F2F8F5;
+  border: 1px solid #CFE2D9;
   border-radius: 12px;
 }
 
@@ -339,59 +339,59 @@ body {
 /* Refined Light/Dark Card Styles */
 .agra-card {
   background: #FFFFFF;
-  border: 1px solid #DCE4E1;
+  border: 1px solid #CBE0D6;
   border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(44, 41, 34, 0.04);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 6px rgba(15, 47, 40, 0.04), 0 10px 22px -10px rgba(15, 118, 110, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .agra-card:hover {
-  border-color: #4E8577;
-  box-shadow: 0 4px 14px rgba(78, 133, 119, 0.08);
+  border-color: #34D399;
+  box-shadow: 0 6px 18px rgba(15, 118, 110, 0.12);
 }
 
 .agra-card-hero {
-  background: linear-gradient(135deg, #2C2922 0%, #20312D 55%, #4E8577 100%);
-  border: 1px solid #4D6A75;
+  background: linear-gradient(135deg, #0D2D26 0%, #134E4A 52%, #0E7490 100%);
+  border: 1px solid rgba(52, 211, 153, 0.3);
   border-radius: 18px;
   color: #FFFFFF;
-  box-shadow: 0 10px 24px rgba(44, 41, 34, 0.16);
+  box-shadow: 0 12px 28px rgba(13, 45, 38, 0.22);
 }
 
 /* Semantic Badges */
 .agra-badge-safe {
-  background: rgba(86, 97, 46, 0.12);
-  color: #56612E;
-  border: 1px solid rgba(86, 97, 46, 0.35);
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
 }
 
 .agra-badge-moderate {
-  background: rgba(217, 119, 6, 0.12);
+  background: #FFFBEB;
   color: #B45309;
-  border: 1px solid rgba(217, 119, 6, 0.35);
+  border: 1px solid #FDE68A;
 }
 
 .agra-badge-high {
-  background: rgba(220, 38, 38, 0.12);
-  color: #DC2626;
-  border: 1px solid rgba(220, 38, 38, 0.35);
+  background: #FFF1F2;
+  color: #BE123C;
+  border: 1px solid #FECDD3;
 }
 
 .agra-badge-ocean {
-  background: rgba(78, 133, 119, 0.12);
-  color: #4E8577;
-  border: 1px solid rgba(78, 133, 119, 0.3);
+  background: #F0FDFA;
+  color: #0F766E;
+  border: 1px solid #99F6E4;
 }
 
 .agra-badge-skyline {
-  background: rgba(77, 106, 117, 0.12);
-  color: #4D6A75;
-  border: 1px solid rgba(77, 106, 117, 0.25);
+  background: #F0F9FF;
+  color: #0369A1;
+  border: 1px solid #BAE6FD;
 }
 
 .agra-badge-cliffside {
-  background: rgba(126, 105, 79, 0.12);
-  color: #7E694F;
-  border: 1px solid rgba(126, 105, 79, 0.3);
+  background: #FFF7ED;
+  color: #C2410C;
+  border: 1px solid #FED7AA;
 }
 
 /* Navbar Animations & Keyframes */
@@ -425,9 +425,9 @@ body {
 }
 
 .animate-nav-shimmer {
-  background: linear-gradient(90deg, #F1D2A1 0%, #FFF5E4 25%, #F1D2A1 50%, #FFF5E4 75%, #F1D2A1 100%);
+  background: linear-gradient(90deg, #10B981 0%, #FBBF24 25%, #38BDF8 50%, #FBBF24 75%, #10B981 100%);
   background-size: 200% 100%;
-  animation: navbar-shimmer 6s linear infinite;
+  animation: navbar-shimmer 5s linear infinite;
 }
 
 .animate-navbar-slide-down {

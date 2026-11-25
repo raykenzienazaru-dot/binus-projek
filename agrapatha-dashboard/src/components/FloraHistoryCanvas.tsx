@@ -264,17 +264,17 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
       <section id="history" className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-4">
           <div>
-            <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+            <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
               Telemetry Archive
             </span>
-            <h2 className="text-lg font-bold text-[#263A35] font-display mt-0.5">
+            <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
               Multi-Sensor &amp; FWI Historical Trends
             </h2>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <div
-              className="flex rounded-xl bg-[#F5F4EE] p-1 border border-[#E2E0CB] text-xs font-semibold"
+              className="flex rounded-xl bg-[#F2F8F5] p-1 border border-[#CFE2D9] text-xs font-semibold flex-wrap"
               role="group"
               aria-label="Filter Channel Metrik Grafik Telemetri"
             >
@@ -282,10 +282,10 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
                 onClick={() => setChannelFilter('ALL')}
                 aria-pressed={channelFilter === 'ALL'}
                 aria-label="Tampilkan semua channel metrik (All)"
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#4E635E] ${
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                   channelFilter === 'ALL'
-                    ? 'bg-white text-[#263A35] shadow-xs font-bold'
-                    : 'text-[#50645F] hover:text-[#263A35]'
+                    ? 'bg-white text-[#102A24] shadow-xs font-bold'
+                    : 'text-[#46655D] hover:text-[#102A24]'
                 }`}
               >
                 All
@@ -294,58 +294,58 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
                 onClick={() => setChannelFilter('TEMP')}
                 aria-pressed={channelFilter === 'TEMP'}
                 aria-label="Filter channel Temperatur (°C)"
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#D97706] ${
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                   channelFilter === 'TEMP'
-                    ? 'bg-white text-[#D97706] shadow-xs font-bold'
-                    : 'text-[#50645F] hover:text-[#D97706]'
+                    ? 'bg-white text-orange-600 shadow-xs font-bold'
+                    : 'text-[#46655D] hover:text-orange-600'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-[#D97706]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-orange-500" aria-hidden="true" />
                 <span>Temp (°C)</span>
               </button>
               <button
                 onClick={() => setChannelFilter('HUM')}
                 aria-pressed={channelFilter === 'HUM'}
                 aria-label="Filter channel Kelembaban Udara RH (%)"
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#0284C7] ${
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                   channelFilter === 'HUM'
-                    ? 'bg-white text-[#0284C7] shadow-xs font-bold'
-                    : 'text-[#50645F] hover:text-[#0284C7]'
+                    ? 'bg-white text-sky-600 shadow-xs font-bold'
+                    : 'text-[#46655D] hover:text-sky-600'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-[#0284C7]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-sky-500" aria-hidden="true" />
                 <span>RH (%)</span>
               </button>
               <button
                 onClick={() => setChannelFilter('FFMC')}
                 aria-pressed={channelFilter === 'FFMC'}
                 aria-label="Filter channel Indeks FFMC"
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#DC2626] ${
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                   channelFilter === 'FFMC'
-                    ? 'bg-white text-[#DC2626] shadow-xs font-bold'
-                    : 'text-[#50645F] hover:text-[#DC2626]'
+                    ? 'bg-white text-rose-600 shadow-xs font-bold'
+                    : 'text-[#46655D] hover:text-rose-600'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-[#DC2626]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-rose-500" aria-hidden="true" />
                 <span>FFMC (idx)</span>
               </button>
               <button
                 onClick={() => setChannelFilter('SOIL')}
                 aria-pressed={channelFilter === 'SOIL'}
                 aria-label="Filter channel Kelembaban Tanah (%)"
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#4E635E] ${
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                   channelFilter === 'SOIL'
-                    ? 'bg-white text-[#4E635E] shadow-xs font-bold'
-                    : 'text-[#50645F] hover:text-[#4E635E]'
+                    ? 'bg-white text-emerald-700 shadow-xs font-bold'
+                    : 'text-[#46655D] hover:text-emerald-700'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-[#4E635E]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />
                 <span>Soil (%)</span>
               </button>
             </div>
 
             <div
-              className="flex rounded-xl bg-[#F5F4EE] p-1 border border-[#E2E0CB] text-xs font-semibold"
+              className="flex rounded-xl bg-[#F2F8F5] p-1 border border-[#CFE2D9] text-xs font-semibold"
               role="group"
               aria-label="Filter Rentang Waktu Grafik"
             >
@@ -355,10 +355,10 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
                   onClick={() => setTimeRange(rng)}
                   aria-pressed={timeRange === rng}
                   aria-label={`Pilih rentang waktu riwayat ${rng}`}
-                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#4E635E] ${
+                  className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                     timeRange === rng
-                      ? 'bg-white text-[#4E635E] shadow-xs font-bold'
-                      : 'text-[#50645F] hover:text-[#263A35]'
+                      ? 'bg-white text-[#0F766E] shadow-xs font-bold'
+                      : 'text-[#46655D] hover:text-[#102A24]'
                   }`}
                 >
                   {rng}
@@ -458,44 +458,44 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
         </div>
 
         {/* Bottom 3 Trend Boxes */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4 pt-3 border-t border-[#D6DCCE]">
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3.5 rounded-xl shadow-2xs flex flex-col justify-between min-h-[92px]">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block font-mono">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-4 pt-3 border-t border-[#CFE2D9]">
+          <div className="bg-amber-50/60 border border-amber-200 p-3.5 rounded-xl flex flex-col justify-between min-h-[92px]">
+            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block font-mono">
               Fine Fuel Moisture (FFMC) Trend
             </span>
             <span
               className={`text-sm font-bold font-display block mt-1.5 ${
-                (latestRec?.ffmc ?? 0) >= 89.5 ? 'text-[#B43E1F]' : 'text-[#4E635E]'
+                (latestRec?.ffmc ?? 0) >= 89.5 ? 'text-rose-700' : 'text-[#0F766E]'
               }`}
             >
               {(latestRec?.ffmc ?? 0) >= 89.5
                 ? `Critical Ignition Zone (${latestRec?.ffmc.toFixed(1)})`
-                : `Stable Fuel Moisture (${latestRec?.ffmc.toFixed(1)})`}
+                : `Stable Fuel Moisture (${latestRec?.ffmc.toFixed(1) ?? '--'})`}
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3.5 rounded-xl shadow-2xs flex flex-col justify-between min-h-[92px]">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block font-mono">
+          <div className="bg-emerald-50/60 border border-emerald-200 p-3.5 rounded-xl flex flex-col justify-between min-h-[92px]">
+            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block font-mono">
               Soil Moisture Momentum
             </span>
             <span
               className={`text-sm font-bold font-display block mt-1.5 ${
-                (latestRec?.soil_moisture ?? 50) < 30 ? 'text-[#D97706]' : 'text-[#4E635E]'
+                (latestRec?.soil_moisture ?? 50) < 30 ? 'text-amber-700' : 'text-emerald-700'
               }`}
             >
               {(latestRec?.soil_moisture ?? 50) < 30 ? 'Decreasing / Dry Stress' : 'Optimal Hydration'}
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3.5 rounded-xl shadow-2xs flex flex-col justify-between min-h-[92px]">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block font-mono">
+          <div className="bg-sky-50/60 border border-sky-200 p-3.5 rounded-xl flex flex-col justify-between min-h-[92px]">
+            <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider block font-mono">
               ESP32-CAM Optical Detection Trend
             </span>
             <span
               className={`text-sm font-bold font-display block mt-1.5 ${
                 latestRec?.vision_prediction.toLowerCase().includes('fire')
-                  ? 'text-[#B43E1F]'
+                  ? 'text-rose-700'
                   : latestRec?.vision_prediction.toLowerCase().includes('smoke')
-                  ? 'text-[#EA580C]'
-                  : 'text-[#4E635E]'
+                  ? 'text-orange-600'
+                  : 'text-sky-800'
               }`}
             >
               {latestRec?.vision_prediction || 'Healthy Forest Canopy'}
@@ -883,51 +883,51 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-orange-50/70 border border-orange-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-orange-800 uppercase tracking-wider block truncate">
               Session Avg Temp
             </span>
-            <span className="text-sm font-bold font-tabular text-[#263A35] block mt-1">
+            <span className="text-sm sm:text-base font-bold font-tabular text-orange-950 block mt-1">
               {avgTemp.toFixed(1)}°C
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-sky-50/70 border border-sky-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider block truncate">
               Session Avg RH
             </span>
-            <span className="text-sm font-bold font-tabular text-[#263A35] block mt-1">
+            <span className="text-sm sm:text-base font-bold font-tabular text-sky-950 block mt-1">
               {avgHum.toFixed(1)}%
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-amber-50/70 border border-amber-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block truncate">
               Session Avg FFMC
             </span>
-            <span className="text-sm font-bold font-tabular text-[#263A35] block mt-1">
+            <span className="text-sm sm:text-base font-bold font-tabular text-amber-950 block mt-1">
               {avgFfmc.toFixed(1)}
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-emerald-50/70 border border-emerald-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block truncate">
               Session Avg Soil
             </span>
-            <span className="text-sm font-bold font-tabular text-[#263A35] block mt-1">
+            <span className="text-sm sm:text-base font-bold font-tabular text-emerald-950 block mt-1">
               {avgSoil.toFixed(1)}%
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-teal-50/70 border border-teal-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wider block truncate">
               Dominant Vision
             </span>
-            <span className="text-sm font-bold font-display text-[#263A35] block mt-1 truncate">
+            <span className="text-sm font-bold font-display text-teal-950 block mt-1 truncate">
               {latestRec?.vision_prediction || 'Healthy Canopy'}
             </span>
           </div>
-          <div className="bg-[#F5F4EE] border border-[#E2E0CB] hover:border-[#818C78] transition-colors p-3 rounded-xl shadow-2xs flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block truncate">
+          <div className="bg-rose-50/70 border border-rose-200 p-3 rounded-xl flex flex-col justify-between">
+            <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block truncate">
               Dominant Risk
             </span>
-            <span className="text-sm font-bold font-tabular text-[#4E635E] block mt-1">
+            <span className="text-sm sm:text-base font-bold font-tabular text-rose-800 block mt-1">
               {latestRec?.sensor_risk || 'LOW'}
             </span>
           </div>
