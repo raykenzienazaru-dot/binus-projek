@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import {
   formatSensorValue,
   formatFlameValue,
+  analyzeFlameDirection,
   getSensorStatusLabel,
   getDeviceConnectivityStatus,
   isModelEvaluationPermitted,
@@ -120,6 +121,29 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
 
       assert.equal(getSensorStatusLabel('flame', 0, isLiveValid), 'AMAN');
       assert.equal(getSensorStatusLabel('flame', 1, isLiveValid), 'FLAME DETECTED');
+      assert.equal(getSensorStatusLabel('flame', 1, isLiveValid, 'KIRI (CH2)'), 'KIRI (CH2)');
+    });
+
+    test('5-channel flame array directional resolver pinpoints left/center/right and yaw angle safely', () => {
+      const ch1Left = analyzeFlameDirection([1, 0, 0, 0, 0], 1, null, null, true);
+      assert.equal(ch1Left.isFireActive, true);
+      assert.equal(ch1Left.shortSide, 'PALING KIRI (CH1)');
+      assert.equal(ch1Left.targetYawDeg, 30);
+
+      const ch4Right = analyzeFlameDirection([0, 0, 0, 1, 0], 1, null, null, true);
+      assert.equal(ch4Right.isFireActive, true);
+      assert.equal(ch4Right.shortSide, 'KANAN (CH4)');
+      assert.equal(ch4Right.targetYawDeg, 120);
+
+      const multiLeft = analyzeFlameDirection([0, 1, 1, 0, 0], 1, null, null, true);
+      assert.equal(multiLeft.isFireActive, true);
+      assert.equal(multiLeft.shortSide, 'SEKTOR KIRI (CH2+CH3)');
+      assert.equal(multiLeft.targetYawDeg, 75);
+
+      const offline = analyzeFlameDirection([1, 0, 0, 0, 0], 1, 'Paling Kiri (CH1)', 30, false);
+      assert.equal(offline.isFireActive, false);
+      assert.equal(offline.shortSide, 'STANDBY');
+      assert.equal(offline.targetYawDeg, null);
     });
 
     test('device connectivity badge explicitly reflects connection state without masking', () => {

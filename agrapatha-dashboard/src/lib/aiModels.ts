@@ -5,6 +5,7 @@
 //    Classes : ['High', 'Low', 'Moderate']
 // ============================================================================
 
+import { analyzeFlameDirection } from './sensorDisplay.ts';
 import type { BmkgNormalizedAlert, BmkgNormalizedForecast } from '../types/bmkg.ts';
 
 export interface FloraSensorModelResult {
@@ -158,6 +159,8 @@ export function evaluateBmkgSensorCorrelation(params: {
   localRh: number | null;
   localSoil: number | null;
   flameDetected: number | null;
+  flameChannels?: number[] | null;
+  flameDirection?: string | null;
   visionPrediction: string | null;
   bmkgForecast: BmkgNormalizedForecast | null;
   bmkgAlerts: BmkgNormalizedAlert[];
@@ -167,6 +170,8 @@ export function evaluateBmkgSensorCorrelation(params: {
     localRh,
     localSoil,
     flameDetected,
+    flameChannels,
+    flameDirection,
     visionPrediction,
     bmkgForecast,
     bmkgAlerts,
@@ -197,18 +202,20 @@ export function evaluateBmkgSensorCorrelation(params: {
     (a) => a.applicability === 'GEOGRAPHIC_MATCH' || a.isJakartaRelevant
   );
 
+  const flameOrigin = analyzeFlameDirection(flameChannels, flameDetected, flameDirection, null, true);
   const isFireActive =
-    (typeof flameDetected === 'number' && flameDetected > 0) ||
+    flameOrigin.isFireActive ||
     Boolean(visionPrediction && /fire|active surface fire/i.test(visionPrediction));
 
   if (isFireActive) {
+    const originText = flameOrigin.isFireActive ? ` [${flameOrigin.sectorSummary}]` : '';
     return {
       severity: 'CRITICAL',
-      headline: 'Titik Api Aktif + Korelasi Angin BMKG Sawah Besar',
+      headline: `Titik Api Aktif${originText} + Korelasi Angin BMKG Sawah Besar`,
       advisory:
         typeof windSpeedKmh === 'number'
-          ? `Flame 5-Ch / Vision mendeteksi api aktif dengan kecepatan angin BMKG Sawah Besar ${windSpeedKmh.toFixed(1)} km/h. Prioritaskan pemadaman segera — interlock darurat beroperasi independen.`
-          : 'Flame 5-Ch / Vision mendeteksi api aktif. Prioritaskan pemadaman segera.',
+          ? `Flame 5-Ch${originText} / Vision mendeteksi api aktif dengan kecepatan angin BMKG Sawah Besar ${windSpeedKmh.toFixed(1)} km/h. Prioritaskan pemadaman segera — interlock darurat beroperasi independen.`
+          : `Flame 5-Ch${originText} / Vision mendeteksi api aktif. Prioritaskan pemadaman segera ke sektor sumber api.`,
       tempDeltaC,
       rhDeltaPct,
       windSpeedKmh,

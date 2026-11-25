@@ -69,6 +69,8 @@ import {
   type GatewayHealthResponse,
 } from './lib/gatewayService';
 import {
+  FLAME_CHANNEL_SPECS,
+  analyzeFlameDirection,
   formatSensorValue,
   getSensorStatusLabel,
   getDeviceConnectivityStatus,
@@ -181,6 +183,8 @@ export const App: React.FC = () => {
   const [pumpStatus, setPumpStatus] = useState<boolean | null>(null);
   const [pumpLockout, setPumpLockout] = useState<boolean | null>(null);
   const [flameChannels, setFlameChannels] = useState<number[] | null>(null);
+  const [flameDirection, setFlameDirection] = useState<string | null>(null);
+  const [flameAngle, setFlameAngle] = useState<number | null>(null);
   const [servoAngles, setServoAngles] = useState<number[] | null>(null);
   const [systemState, setSystemState] = useState<string | null>(null);
   const [envCondition, setEnvCondition] = useState<string | null>(null);
@@ -332,6 +336,8 @@ export const App: React.FC = () => {
     setPumpStatus(null);
     setPumpLockout(null);
     setFlameChannels(null);
+    setFlameDirection(null);
+    setFlameAngle(null);
     setServoAngles(null);
     setSystemState(null);
     setEnvCondition(null);
@@ -386,7 +392,21 @@ export const App: React.FC = () => {
     if (typeof payload.zone === 'number' && Number.isFinite(payload.zone)) setZone(payload.zone);
     if (typeof payload.pumpStatus === 'boolean') setPumpStatus(payload.pumpStatus);
     if (typeof payload.pumpLockout === 'boolean') setPumpLockout(payload.pumpLockout);
-    if (Array.isArray(payload.flameChannels)) setFlameChannels(payload.flameChannels);
+    if (Array.isArray(payload.flameChannels)) {
+      setFlameChannels(payload.flameChannels);
+    } else {
+      setFlameChannels(null);
+    }
+    if (typeof payload.flameDirection === 'string' && payload.flameDirection.trim() !== '') {
+      setFlameDirection(payload.flameDirection.trim());
+    } else {
+      setFlameDirection(null);
+    }
+    if (typeof payload.flameAngle === 'number' && Number.isFinite(payload.flameAngle)) {
+      setFlameAngle(payload.flameAngle);
+    } else {
+      setFlameAngle(null);
+    }
     if (Array.isArray(payload.servoAngles)) setServoAngles(payload.servoAngles);
     if (typeof payload.systemState === 'string') setSystemState(payload.systemState);
     if (typeof payload.envCondition === 'string') setEnvCondition(payload.envCondition);
@@ -629,6 +649,19 @@ export const App: React.FC = () => {
     [isLiveTelemetry, isTelemetryStale, temp, rh, soilMoisture]
   );
 
+  // Live directional origin of fire across 5-channel flame array (GPIO 25..33)
+  const flameInfo = useMemo(
+    () =>
+      analyzeFlameDirection(
+        flameChannels,
+        flameDetected,
+        flameDirection,
+        flameAngle,
+        isLiveTelemetry && !isTelemetryStale
+      ),
+    [flameChannels, flameDetected, flameDirection, flameAngle, isLiveTelemetry, isTelemetryStale]
+  );
+
   // Real-time Correlation between Onboard Physical Sensors and BMKG Sawah Besar (Jakarta Pusat)
   const bmkgCorrelation = useMemo(
     () =>
@@ -637,11 +670,13 @@ export const App: React.FC = () => {
         localRh: isLiveTelemetry && !isTelemetryStale ? rh : null,
         localSoil: isLiveTelemetry && !isTelemetryStale ? soilMoisture : null,
         flameDetected: isLiveTelemetry && !isTelemetryStale ? flameDetected : null,
+        flameChannels: isLiveTelemetry && !isTelemetryStale ? flameChannels : null,
+        flameDirection: isLiveTelemetry && !isTelemetryStale ? flameDirection : null,
         visionPrediction,
         bmkgForecast: bmkgState?.forecast ?? null,
         bmkgAlerts,
       }),
-    [isLiveTelemetry, isTelemetryStale, temp, rh, soilMoisture, flameDetected, visionPrediction, bmkgState, bmkgAlerts]
+    [isLiveTelemetry, isTelemetryStale, temp, rh, soilMoisture, flameDetected, flameChannels, flameDirection, visionPrediction, bmkgState, bmkgAlerts]
   );
 
   // Historical telemetry buffer initialized empty (populated solely by genuine telemetry)
@@ -1042,11 +1077,11 @@ export const App: React.FC = () => {
       };
     }
 
-    if (envCondition === 'KEBAKARAN' || (typeof flameDetected === 'number' && flameDetected > 0)) {
+    if (envCondition === 'KEBAKARAN' || flameInfo.isFireActive || (typeof flameDetected === 'number' && flameDetected > 0)) {
       return {
         severity: 'KEBAKARAN',
-        title: 'Peringatan Darurat Sensor Onboard: KEBAKARAN TERDETEKSI',
-        description: `${commandLabel || actionCommand || 'Flame 5-Ch / Vision FIRE aktif'} · Suhu DHT22 ${typeof temp === 'number' ? temp.toFixed(1) : '--'}°C · Zona ${zone ?? '--'} · Angin BMKG ${bmkgStep ? `${bmkgStep.windSpeedKmh} km/h` : '--'}.`,
+        title: `Peringatan Darurat KEBAKARAN — ${flameInfo.isFireActive ? flameInfo.sectorSummary : 'Vision FIRE'}`,
+        description: `${flameInfo.isFireActive ? `${flameInfo.detailLabel} · ` : ''}${commandLabel || actionCommand || 'Pemadaman aktif'} · Suhu DHT22 ${typeof temp === 'number' ? temp.toFixed(1) : '--'}°C · Zona ${zone ?? '--'} · Angin BMKG ${bmkgStep ? `${bmkgStep.windSpeedKmh} km/h` : '--'}.`,
         wrapper: 'bg-rose-50 border-rose-300 text-rose-900',
         badge: 'bg-rose-600 text-white',
         btn: 'bg-rose-600 text-white hover:bg-rose-700',
@@ -1093,7 +1128,7 @@ export const App: React.FC = () => {
       actionText: 'Lihat Telemetri',
       actionTarget: 'monitoring',
     };
-  }, [isLiveTelemetry, isTelemetryStale, mqttWssStatus, envCondition, systemState, flameDetected, commandLabel, actionCommand, zone, floraResult, soilMoisture, temp, rh, bmkgStep, bmkgCorrelation]);
+  }, [isLiveTelemetry, isTelemetryStale, mqttWssStatus, envCondition, systemState, flameDetected, flameInfo, commandLabel, actionCommand, zone, floraResult, soilMoisture, temp, rh, bmkgStep, bmkgCorrelation]);
 
   const navItems = useMemo(
     () => [
@@ -1976,10 +2011,12 @@ export const App: React.FC = () => {
                         </div>
                         <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-rose-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${flameInfo.isFireActive ? 'bg-rose-500 animate-ping' : 'bg-rose-400'}`} />
                             <span className="text-emerald-100 font-semibold truncate">Flame 5-Ch</span>
                           </div>
-                          <span className="font-bold font-tabular text-white text-[13px] whitespace-nowrap shrink-0">{isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 'FLAME' : 'SAFE') : '--'}</span>
+                          <span className="font-bold font-tabular text-white text-[12px] whitespace-nowrap shrink-0">
+                            {isLiveTelemetry && !isTelemetryStale ? (flameInfo.isFireActive ? flameInfo.shortSide : typeof flameDetected === 'number' ? 'SAFE' : '--') : '--'}
+                          </span>
                         </div>
                         <div className="bg-white/10 backdrop-blur-md border border-white/15 hover:bg-white/16 hover:border-indigo-300/60 px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-xs transition-all duration-150 min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
@@ -2090,11 +2127,19 @@ export const App: React.FC = () => {
                       </span>
                       <span className="text-sm font-bold text-white block mt-1">
                         {isLiveTelemetry && !isTelemetryStale
-                          ? (typeof flameDetected === 'number' && flameDetected > 0) ? 'API TERDETEKSI' : 'AMAN TERKENDALI'
+                          ? flameInfo.isFireActive
+                            ? `API: ${flameInfo.shortSide}`
+                            : 'AMAN TERKENDALI'
                           : 'STANDBY'}
                       </span>
                       <span className="text-xs text-emerald-100/85 block font-tabular mt-1">
-                        {wildfireResult && inferenceStatus === 'success' ? wildfireResult.predicted_label : edgePrediction ? `Edge Vision: ${edgePrediction}` : 'MobileNetV2 (be-binus)'}
+                        {flameInfo.isFireActive && flameInfo.targetYawDeg !== null
+                          ? `Arah Yaw Arm: ${flameInfo.targetYawDeg}° · ${flameInfo.sectorSummary}`
+                          : wildfireResult && inferenceStatus === 'success'
+                            ? wildfireResult.predicted_label
+                            : edgePrediction
+                              ? `Edge Vision: ${edgePrediction}`
+                              : 'MobileNetV2 (be-binus)'}
                       </span>
                     </div>
                     <div className="bg-black/20 backdrop-blur-md border border-white/15 hover:border-emerald-300/50 transition-all duration-150 p-3.5 rounded-xl flex flex-col justify-between min-h-22">
@@ -2191,22 +2236,43 @@ export const App: React.FC = () => {
                       },
                       {
                         title: '4. Deteksi Api (Flame Sensor 5-Ch)',
-                        shortTitle: 'Flame Sensor 5-Ch',
+                        shortTitle: 'Flame Sensor 5-Ch (Arah)',
                         channelTag: 'Sensor 4 · GPIO 25–33',
                         cardTopAccent: 'border-t-[3px] border-t-rose-500',
                         tagClass: 'text-rose-700 bg-rose-50 border-rose-200',
-                        value: formatSensorValue(flameDetected, isLiveTelemetry && !isTelemetryStale, 0),
-                        unit: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 'FLAME' : 'CLEAR') : '',
-                        statusLabel: getSensorStatusLabel('flame', flameDetected, isLiveTelemetry && !isTelemetryStale, undefined, isTelemetryStale),
-                        isWarn: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' && flameDetected > 0,
-                        percent: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' ? (flameDetected > 0 ? 100 : 0) : 0,
-                        minLabel: '0 (Aman)',
-                        maxLabel: '1 (Api)',
-                        barColor: isLiveTelemetry && !isTelemetryStale && typeof flameDetected === 'number' && flameDetected > 0 ? 'bg-gradient-to-r from-orange-500 to-rose-600' : isLiveTelemetry && !isTelemetryStale ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-slate-300',
+                        value: formatSensorValue(
+                          flameDetected ?? (flameInfo.isFireActive ? 1 : null),
+                          isLiveTelemetry && !isTelemetryStale,
+                          0
+                        ),
+                        unit: isLiveTelemetry && !isTelemetryStale
+                          ? flameInfo.isFireActive
+                            ? flameInfo.shortSide
+                            : typeof flameDetected === 'number' || flameChannels
+                              ? 'CLEAR'
+                              : ''
+                          : '',
+                        statusLabel: getSensorStatusLabel(
+                          'flame',
+                          flameDetected ?? (flameInfo.isFireActive ? 1 : null),
+                          isLiveTelemetry && !isTelemetryStale,
+                          flameInfo.isFireActive ? flameInfo.shortSide : undefined,
+                          isTelemetryStale
+                        ),
+                        isWarn: flameInfo.isFireActive,
+                        percent: flameInfo.isFireActive ? 100 : 0,
+                        minLabel: 'Kiri (CH1)',
+                        maxLabel: 'Kanan (CH5)',
+                        barColor: flameInfo.isFireActive ? 'bg-gradient-to-r from-orange-500 to-rose-600' : isLiveTelemetry && !isTelemetryStale ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-slate-300',
                         isCardLive: isLiveTelemetry && !isTelemetryStale,
+                        flameChannelsVisual: true,
                         explanation: '',
-                        reference: '5 Sektor Yaw Arm',
-                        extra: `Vision: ${wildfireResult ? wildfireResult.predicted_label : edgePrediction || 'Standby'}`,
+                        reference: flameInfo.isFireActive && flameInfo.targetYawDeg !== null
+                          ? `Target Servo: ${flameInfo.targetYawDeg}°`
+                          : '5 Sektor (Kiri -> Kanan)',
+                        extra: flameInfo.isFireActive
+                          ? flameInfo.sectorSummary
+                          : `Vision: ${wildfireResult ? wildfireResult.predicted_label : edgePrediction || 'Standby'}`,
                       },
                       {
                         title: '5. Angin & Cuaca Makro (BMKG Sawah Besar)',
@@ -2297,23 +2363,56 @@ export const App: React.FC = () => {
                               </div>
                             )}
 
-                            {/* Visual Range Spectrum Gauge */}
-                            <div className="my-2 bg-[#F2F8F5] p-3 rounded-xl border border-[#CFE2D9]">
-                              <div className="flex justify-between items-center text-[11px] font-mono text-[#46655D] mb-1.5">
-                                <span>Range Spectrum</span>
-                                <span className="font-bold text-[#102A24]">{card.percent.toFixed(0)}%</span>
+                            {/* Visual Range Spectrum Gauge / 5-Sector Directional Flame Strip */}
+                            {'flameChannelsVisual' in card && card.flameChannelsVisual ? (
+                              <div className="my-2 bg-[#F2F8F5] p-3 rounded-xl border border-[#CFE2D9]">
+                                <div className="flex justify-between items-center text-[11px] font-mono text-[#46655D] mb-1.5 gap-2">
+                                  <span>Peta 5 Sektor Api (Kiri → Kanan)</span>
+                                  <span className={`font-bold ${flameInfo.isFireActive ? 'text-rose-700' : 'text-[#102A24]'}`}>
+                                    {flameInfo.isFireActive ? flameInfo.sectorSummary : isLiveTelemetry && !isTelemetryStale ? 'CLEAR' : '--'}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1">
+                                  {FLAME_CHANNEL_SPECS.map((spec, idx) => {
+                                    const hasLive = isLiveTelemetry && !isTelemetryStale && Array.isArray(flameChannels);
+                                    const active = hasLive && flameInfo.channelStates[idx];
+                                    return (
+                                      <div
+                                        key={spec.key}
+                                        title={`${spec.key} (${spec.label} · GPIO ${spec.gpio} · Yaw ${spec.angleDeg}°)`}
+                                        className={`rounded-lg py-1.5 px-1 text-center border transition-all ${
+                                          !hasLive
+                                            ? 'bg-white border-slate-200 text-slate-400'
+                                            : active
+                                              ? 'bg-rose-600 border-rose-700 text-white shadow-xs animate-pulse'
+                                              : 'bg-white border-emerald-200 text-emerald-800'
+                                        }`}
+                                      >
+                                        <span className="block text-[10px] font-bold font-mono leading-tight">{spec.key}</span>
+                                        <span className="block text-[9px] font-semibold leading-tight truncate">{spec.shortLabel}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                              <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-[#DCECE4]">
-                                <div
-                                  className={`h-full rounded-full flora-meter-bar ${card.barColor}`}
-                                  style={{ width: `${card.percent}%` }}
-                                />
+                            ) : (
+                              <div className="my-2 bg-[#F2F8F5] p-3 rounded-xl border border-[#CFE2D9]">
+                                <div className="flex justify-between items-center text-[11px] font-mono text-[#46655D] mb-1.5">
+                                  <span>Range Spectrum</span>
+                                  <span className="font-bold text-[#102A24]">{card.percent.toFixed(0)}%</span>
+                                </div>
+                                <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-[#DCECE4]">
+                                  <div
+                                    className={`h-full rounded-full flora-meter-bar ${card.barColor}`}
+                                    style={{ width: `${card.percent}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[11px] font-mono text-[#46655D] mt-1.5">
+                                  <span>{card.minLabel}</span>
+                                  <span>{card.maxLabel}</span>
+                                </div>
                               </div>
-                              <div className="flex justify-between text-[11px] font-mono text-[#46655D] mt-1.5">
-                                <span>{card.minLabel}</span>
-                                <span>{card.maxLabel}</span>
-                              </div>
-                            </div>
+                            )}
 
                             {/* Descriptive Context */}
                             {card.explanation ? (
@@ -2353,6 +2452,8 @@ export const App: React.FC = () => {
                 localRh={rh}
                 localSoil={soilMoisture}
                 flameDetected={flameDetected}
+                flameChannels={flameChannels}
+                flameDirection={flameDirection}
                 visionPrediction={visionPrediction}
                 isLiveTelemetry={isLiveTelemetry}
                 isTelemetryStale={isTelemetryStale}
@@ -3174,29 +3275,52 @@ export const App: React.FC = () => {
                     </div>
 
                     <div className="bg-rose-50/40 border border-rose-200 rounded-xl p-3.5">
-                      <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block mb-2">
-                        5-Ch Flame Array (GPIO 25, 26, 27, 32, 33)
-                      </span>
-                      <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[11px]">
-                        {[0, 1, 2, 3, 4].map((ch) => {
-                          const val = isLiveTelemetry && !isTelemetryStale && flameChannels ? flameChannels[ch] : undefined;
+                      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
+                          5-Ch Flame Array (Kiri → Kanan)
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${
+                            flameInfo.isFireActive
+                              ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                              : isLiveTelemetry && !isTelemetryStale
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-white text-slate-500 border-slate-200'
+                          }`}
+                        >
+                          {isLiveTelemetry && !isTelemetryStale
+                            ? flameInfo.isFireActive
+                              ? flameInfo.sectorSummary
+                              : 'AMAN'
+                            : 'STANDBY'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[10px]">
+                        {FLAME_CHANNEL_SPECS.map((spec, idx) => {
+                          const hasLive = isLiveTelemetry && !isTelemetryStale && Boolean(flameChannels);
+                          const val = hasLive && flameChannels ? flameChannels[idx] : undefined;
                           const isFire = typeof val === 'number' && val > 0;
                           return (
                             <div
-                              key={ch}
-                              className={`rounded-lg p-2 border font-bold ${
+                              key={spec.key}
+                              title={`${spec.key} · ${spec.label} · GPIO ${spec.gpio} · Yaw ${spec.angleDeg}°`}
+                              className={`rounded-lg p-1.5 border font-bold ${
                                 val === undefined
                                   ? 'bg-white border-slate-200 text-slate-500'
                                   : isFire
-                                    ? 'bg-rose-600 border-rose-700 text-white animate-pulse'
+                                    ? 'bg-rose-600 border-rose-700 text-white animate-pulse shadow-xs'
                                     : 'bg-emerald-50 border-emerald-200 text-emerald-800'
                               }`}
                             >
-                              <div>FL{ch}</div>
-                              <div>{val === undefined ? '--' : isFire ? 'API' : 'OK'}</div>
+                              <div>{spec.key}</div>
+                              <div className="text-[9px] font-sans font-semibold leading-tight truncate">{spec.shortLabel}</div>
+                              <div className="text-[9px] opacity-85">{val === undefined ? `${spec.angleDeg}°` : isFire ? `API · ${spec.angleDeg}°` : 'OK'}</div>
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="mt-2 text-[11px] font-medium text-rose-900/90 flex items-center justify-between gap-2 flex-wrap">
+                        <span>{isLiveTelemetry && !isTelemetryStale ? flameInfo.detailLabel : 'GPIO 25 (CH1) s.d. GPIO 33 (CH5)'}</span>
                       </div>
                     </div>
 
@@ -3512,7 +3636,9 @@ export const App: React.FC = () => {
                           <Flame size={15} className="text-rose-600" />
                           3. KEBAKARAN (Flame 5-Ch / Vision Fire)
                         </span>
-                        <span className="text-[11px] font-mono text-rose-800 bg-rose-100/70 px-2 py-0.5 rounded-md">Staged Suppression</span>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${flameInfo.isFireActive ? 'bg-rose-600 text-white font-bold animate-pulse' : 'text-rose-800 bg-rose-100/70'}`}>
+                          {flameInfo.isFireActive ? flameInfo.sectorSummary : 'Staged Suppression'}
+                        </span>
                       </div>
                       <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
                         Mengarahkan rel + lengan 4-DoF ke sektor Flame 5-Channel aktif, verifikasi optik OV2640, dan semprot pemadaman.
@@ -3728,6 +3854,9 @@ export const App: React.FC = () => {
                   liveRisk={floraResult?.sensorRisk ?? null}
                   liveVisionPrediction={visionPrediction}
                   liveFlameDetected={flameDetected}
+                  liveFlameChannels={flameChannels}
+                  liveFlameDirection={flameDirection}
+                  liveFlameAngle={flameAngle}
                   bmkgWindKmh={bmkgStep?.windSpeedKmh ?? null}
                   bmkgPrecipMm={bmkgStep?.precipitationMm ?? null}
                   isLive={isLiveTelemetry && !isTelemetryStale}

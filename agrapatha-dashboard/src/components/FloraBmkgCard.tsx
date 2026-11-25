@@ -33,6 +33,8 @@ interface FloraBmkgCardProps {
   localRh?: number | null;
   localSoil?: number | null;
   flameDetected?: number | null;
+  flameChannels?: number[] | null;
+  flameDirection?: string | null;
   visionPrediction?: string | null;
   isLiveTelemetry?: boolean;
   isTelemetryStale?: boolean;
@@ -50,6 +52,8 @@ export const FloraBmkgCard: React.FC<FloraBmkgCardProps> = ({
   localRh = null,
   localSoil = null,
   flameDetected = null,
+  flameChannels = null,
+  flameDirection = null,
   visionPrediction = null,
   isLiveTelemetry = false,
   isTelemetryStale = false,
@@ -174,11 +178,13 @@ export const FloraBmkgCard: React.FC<FloraBmkgCardProps> = ({
         localRh: isLocalValid ? localRh : null,
         localSoil: isLocalValid ? localSoil : null,
         flameDetected: isLocalValid ? flameDetected : null,
+        flameChannels: isLocalValid ? flameChannels : null,
+        flameDirection: isLocalValid ? flameDirection : null,
         visionPrediction,
         bmkgForecast: state.forecast,
         bmkgAlerts: activeAlerts,
       }),
-    [isLocalValid, localTemp, localRh, localSoil, flameDetected, visionPrediction, state.forecast, activeAlerts]
+    [isLocalValid, localTemp, localRh, localSoil, flameDetected, flameChannels, flameDirection, visionPrediction, state.forecast, activeAlerts]
   );
 
   const displayedAlerts = showAllNationalAlerts

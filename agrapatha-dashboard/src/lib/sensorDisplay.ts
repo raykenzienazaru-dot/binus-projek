@@ -34,6 +34,113 @@ export function formatSensorValue(
   return fallback;
 }
 
+export const FLAME_CHANNEL_SPECS = [
+  { channel: 1, key: 'CH1', gpio: 25, label: 'Paling Kiri', shortLabel: 'P.Kiri', angleDeg: 30 },
+  { channel: 2, key: 'CH2', gpio: 26, label: 'Kiri', shortLabel: 'Kiri', angleDeg: 60 },
+  { channel: 3, key: 'CH3', gpio: 27, label: 'Tengah', shortLabel: 'Tengah', angleDeg: 90 },
+  { channel: 4, key: 'CH4', gpio: 32, label: 'Kanan', shortLabel: 'Kanan', angleDeg: 120 },
+  { channel: 5, key: 'CH5', gpio: 33, label: 'Paling Kanan', shortLabel: 'P.Kanan', angleDeg: 150 },
+] as const;
+
+export interface FlameDirectionAnalysis {
+  isFireActive: boolean;
+  activeIndices: number[];
+  channelStates: boolean[];
+  shortSide: string;
+  sectorSummary: string;
+  detailLabel: string;
+  targetYawDeg: number | null;
+}
+
+/**
+ * Resolves exact flame origin sector and weighted servo yaw angle from 5-channel flame array
+ * (GPIO 25..33: Paling Kiri -> Paling Kanan) plus optional firmware direction fields.
+ */
+export function analyzeFlameDirection(
+  flameChannels: number[] | null | undefined,
+  flameDetected: number | null | undefined,
+  rawDirection?: string | null,
+  rawAngle?: number | null,
+  isLiveValid = true
+): FlameDirectionAnalysis {
+  if (!isLiveValid) {
+    return {
+      isFireActive: false,
+      activeIndices: [],
+      channelStates: [false, false, false, false, false],
+      shortSide: 'STANDBY',
+      sectorSummary: 'STANDBY',
+      detailLabel: 'Menunggu telemetri sensor Flame 5-Ch aktif',
+      targetYawDeg: null,
+    };
+  }
+
+  const channelStates = FLAME_CHANNEL_SPECS.map((_, idx) =>
+    Boolean(flameChannels && typeof flameChannels[idx] === 'number' && flameChannels[idx] > 0)
+  );
+  const activeIndices: number[] = [];
+  channelStates.forEach((active, idx) => {
+    if (active) activeIndices.push(idx);
+  });
+
+  if (activeIndices.length === 1) {
+    const spec = FLAME_CHANNEL_SPECS[activeIndices[0]];
+    const yawDeg = typeof rawAngle === 'number' && Number.isFinite(rawAngle) && rawAngle >= 0 ? Math.round(rawAngle) : spec.angleDeg;
+    return {
+      isFireActive: true,
+      activeIndices,
+      channelStates,
+      shortSide: `${spec.label.toUpperCase()} (${spec.key})`,
+      sectorSummary: `${spec.key} · ${spec.label} (${yawDeg}°)` ,
+      detailLabel: `Sumber api di sebelah ${spec.label} (${spec.key} GPIO ${spec.gpio} · Yaw ${yawDeg}°)` ,
+      targetYawDeg: yawDeg,
+    };
+  }
+
+  if (activeIndices.length > 1) {
+    const computedAvg = Math.round(
+      activeIndices.reduce((sum, idx) => sum + FLAME_CHANNEL_SPECS[idx].angleDeg, 0) / activeIndices.length
+    );
+    const yawDeg = typeof rawAngle === 'number' && Number.isFinite(rawAngle) && rawAngle >= 0 ? Math.round(rawAngle) : computedAvg;
+    const chCodes = activeIndices.map((idx) => FLAME_CHANNEL_SPECS[idx].key).join('+');
+    const sideText = yawDeg < 78 ? 'Sektor Kiri' : yawDeg > 102 ? 'Sektor Kanan' : 'Sektor Tengah';
+    const sideLabels = activeIndices.map((idx) => `${FLAME_CHANNEL_SPECS[idx].key} ${FLAME_CHANNEL_SPECS[idx].label}`).join(', ');
+    return {
+      isFireActive: true,
+      activeIndices,
+      channelStates,
+      shortSide: `${sideText.toUpperCase()} (${chCodes})`,
+      sectorSummary: `${chCodes} · ${sideText} (${yawDeg}°)` ,
+      detailLabel: `Sumber api multi-kanal: ${sideLabels} (Target Yaw ${yawDeg}°)` ,
+      targetYawDeg: yawDeg,
+    };
+  }
+
+  const cleanRawDir = rawDirection && rawDirection.trim() !== '' && rawDirection.trim().toUpperCase() !== 'AMAN' ? rawDirection.trim() : null;
+  if ((typeof flameDetected === 'number' && Number.isFinite(flameDetected) && flameDetected > 0) || cleanRawDir) {
+    const yawDeg = typeof rawAngle === 'number' && Number.isFinite(rawAngle) && rawAngle >= 0 ? Math.round(rawAngle) : null;
+    return {
+      isFireActive: true,
+      activeIndices: [],
+      channelStates,
+      shortSide: cleanRawDir ? cleanRawDir.toUpperCase() : 'FLAME DETECTED',
+      sectorSummary: cleanRawDir ? (yawDeg !== null ? `${cleanRawDir} (${yawDeg}°)` : cleanRawDir) : 'Api Terdeteksi',
+      detailLabel: cleanRawDir ? `Api terdeteksi (${cleanRawDir})` : 'Api terdeteksi tanpa penanda kanal spesifik',
+      targetYawDeg: yawDeg,
+    };
+  }
+
+  return {
+    isFireActive: false,
+    activeIndices: [],
+    channelStates,
+    shortSide: 'AMAN',
+    sectorSummary: 'AMAN (5 Sektor Clear)',
+    detailLabel: 'Semua kanal CH1 (P.Kiri) s.d. CH5 (P.Kanan) dalam kondisi aman',
+    targetYawDeg: null,
+  };
+}
+
 /**
  * Formats flame sensor reading (0 = aman, 1 = flame).
  */

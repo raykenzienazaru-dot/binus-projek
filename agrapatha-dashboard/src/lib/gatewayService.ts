@@ -38,6 +38,8 @@ export interface GatewayTelemetryPayload {
   ventilationActive?: boolean | null;
   gasAlarmActive?: boolean | null;
   flameChannels?: number[] | null;
+  flameDirection?: string | null;
+  flameAngle?: number | null;
   servoAngles?: number[] | null;
   systemState?: string | null;
   envCondition?: string | null;
@@ -201,7 +203,16 @@ export function parseGatewayTelemetry(data: unknown): GatewayTelemetryPayload | 
   const rawFlameCh = rec.flameChannels ?? rec.flame_ch;
   if (Array.isArray(rawFlameCh) && rawFlameCh.every((v) => typeof v === 'number' && Number.isFinite(v))) {
     result.flameChannels = rawFlameCh.slice(0, 5);
+    if (result.flameDetected === null && result.flameChannels.some((v) => v > 0)) {
+      result.flameDetected = 1;
+    }
   }
+
+  const flameDirection = getStrOrNull('flameDirection') ?? getStrOrNull('flame_direction');
+  if (flameDirection !== null) result.flameDirection = flameDirection;
+
+  const flameAngle = getNumOrNull('flameAngle') ?? getNumOrNull('flame_angle');
+  if (flameAngle !== null) result.flameAngle = flameAngle;
 
   const rawServoAngles = rec.servoAngles ?? rec.servo_angles;
   if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {

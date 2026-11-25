@@ -5,6 +5,7 @@ import {
   Sprout,
   ShieldAlert,
 } from 'lucide-react';
+import { analyzeFlameDirection } from '../lib/sensorDisplay';
 
 export interface TelemetryHistoryPoint {
   timestamp: string;
@@ -26,6 +27,9 @@ export interface FloraHistoryCanvasProps {
   liveRisk?: 'Low' | 'Moderate' | 'High' | null;
   liveVisionPrediction?: string | null;
   liveFlameDetected?: number | null;
+  liveFlameChannels?: number[] | null;
+  liveFlameDirection?: string | null;
+  liveFlameAngle?: number | null;
   bmkgWindKmh?: number | null;
   bmkgPrecipMm?: number | null;
   isLive?: boolean;
@@ -49,6 +53,9 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
   liveRisk,
   liveVisionPrediction,
   liveFlameDetected,
+  liveFlameChannels,
+  liveFlameDirection,
+  liveFlameAngle,
   bmkgWindKmh,
   bmkgPrecipMm,
   isLive,
@@ -496,8 +503,16 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
           const currentRisk = liveRisk || latestRec?.sensor_risk || null;
           const currentVision = liveVisionPrediction || latestRec?.vision_prediction || null;
           const currentFlame = typeof liveFlameDetected === 'number' ? liveFlameDetected : null;
+          const flameOrigin = analyzeFlameDirection(
+            liveFlameChannels,
+            currentFlame,
+            liveFlameDirection,
+            liveFlameAngle,
+            Boolean(isLive)
+          );
 
           const isFireAlert =
+            flameOrigin.isFireActive ||
             currentFlame === 1 ||
             Boolean(currentVision && currentVision.toLowerCase().includes('fire')) ||
             Boolean(currentVision && currentVision.toLowerCase().includes('smoke'));
@@ -572,14 +587,16 @@ export const FloraHistoryCanvas: React.FC<FloraHistoryCanvasProps> = React.memo(
                     <div className="mt-3 text-xs">
                       <p className="text-xs text-[#102A24]/90 leading-relaxed font-medium">
                         {isFireAlert
-                          ? 'Sensor Flame 5-Channel atau ESP32-CAM Vision mendeteksi api/asap. Protokol pemadaman staged arm aktif!'
+                          ? flameOrigin.isFireActive
+                            ? `Api terdeteksi di ${flameOrigin.detailLabel}. Protokol pemadaman staged arm mengarah ke sektor aktif!`
+                            : 'Sensor Flame 5-Channel atau ESP32-CAM Vision mendeteksi api/asap. Protokol pemadaman staged arm aktif!'
                           : isFireWarning
                           ? 'Model Botani ANN membaca risiko stres tinggi. Siagakan pemindaian kamera dan pompa.'
-                          : 'Sensor nyala api 5-channel dan klasifikasi visual MobileNetV2 berada pada status aman.'}
+                          : 'Sensor nyala api 5-channel (CH1 P.Kiri–CH5 P.Kanan) dan MobileNetV2 dalam status aman.'}
                       </p>
 
-                      <div className="my-2.5 px-3 py-2 rounded-lg bg-white border border-black/10 text-[11px] font-mono text-[#102A24] flex items-center justify-between">
-                        <span>Flame: {currentFlame === 1 ? 'API AKTIF' : 'CLEAR'} · Angin BMKG: {typeof bmkgWindKmh === 'number' ? `${bmkgWindKmh} km/h` : '--'}</span>
+                      <div className="my-2.5 px-3 py-2 rounded-lg bg-white border border-black/10 text-[11px] font-mono text-[#102A24] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Flame: {flameOrigin.isFireActive ? flameOrigin.sectorSummary : currentFlame === 1 ? 'API AKTIF' : 'CLEAR'} · Angin BMKG: {typeof bmkgWindKmh === 'number' ? `${bmkgWindKmh} km/h` : '--'}</span>
                       </div>
 
                       <ul className="space-y-1.5 text-xs text-[#102A24]/90 mt-2">

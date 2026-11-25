@@ -44,17 +44,19 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
       humidity: 64.2,
       soil_moisture: 42.1,
       soil_raw: 2450,
-      flame_detected: 0,
-      flame_ch: [0, 0, 0, 0, 0],
+      flame_detected: 1,
+      flame_ch: [0, 1, 0, 0, 0],
+      flame_direction: 'Kiri (CH2)',
+      flame_angle: 60,
       zone: 2,
       pump_status: false,
       pump_lockout: false,
       servo_angles: [90, 45, 45, 90],
       system_state: 'SCANNING_ZONES',
-      env_condition: 'NORMAL',
-      action_command: 'CMD_IDLE',
-      command_label: 'MONITORING',
-      command_payload: { cmd: 'NONE' },
+      env_condition: 'KEBAKARAN',
+      action_command: 'CMD_FIRE_SUPPRESSION',
+      command_label: 'PERINTAH: SEMPROT Kiri (CH2) (60 deg)',
+      command_payload: { cmd: 'CMD_FIRE_SUPPRESSION', params: { duration: 4000 } },
     });
     const pub = buildMqttPublishPacket('agrapatha/telemetry', livePayload);
     const combined = new Uint8Array(suback.length + pub.length);
@@ -73,7 +75,10 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
       });
       assert.ok(normalized);
       assert.equal(normalized.temp, 28.5);
-      assert.deepEqual(normalized.flameChannels, [0, 0, 0, 0, 0]);
+      assert.equal(normalized.flameDetected, 1);
+      assert.deepEqual(normalized.flameChannels, [0, 1, 0, 0, 0]);
+      assert.equal(normalized.flameDirection, 'Kiri (CH2)');
+      assert.equal(normalized.flameAngle, 60);
       assert.equal(normalized.systemState, 'SCANNING_ZONES');
     }
   });

@@ -188,6 +188,8 @@ int rawSoil = 0;
 float soilMoisturePct = 0.0;
 bool flameCh[5] = {false, false, false, false, false};
 int activeFlameCount = 0;
+int flameTargetYaw = -1;
+char flameDirectionLabel[48] = "AMAN";
 
 // AI Vision
 char aiVisionClass[16] = "SAFE";
@@ -233,7 +235,7 @@ bool emergencyStopTriggered = false;
 // ======================================================
 char envCondition[24]        = "NORMAL";       // "KERING", "BASAH", "KEBAKARAN", "ASAP_VISUAL", "NORMAL", "FAULT"
 char actionCommand[32]       = "CMD_IDLE";
-char commandButtonLabel[48]  = "Sistem Siap";
+char commandButtonLabel[80]  = "Sistem Siap";
 char commandPayload[96]      = "{\"cmd\":\"NONE\"}";
 
 // ======================================================
@@ -546,9 +548,22 @@ void readAllSensors() {
   flameCh[3] = (digitalRead(FLAME_CH4_PIN) == FLAME_ACTIVE_STATE);
   flameCh[4] = (digitalRead(FLAME_CH5_PIN) == FLAME_ACTIVE_STATE);
 
+  const int chAngles[5] = { 30, 60, 90, 120, 150 };
+  const char* chNames[5] = { "Paling Kiri", "Kiri", "Tengah", "Kanan", "Paling Kanan" };
   activeFlameCount = 0;
+  int yawSum = 0;
+  int singleIdx = -1;
+  char activeChTag[24] = "";
+
   for (int i = 0; i < 5; i++) {
-    if (flameCh[i]) activeFlameCount++;
+    if (flameCh[i]) {
+      activeFlameCount++;
+      yawSum += chAngles[i];
+      singleIdx = i;
+      char tag[6];
+      snprintf(tag, sizeof(tag), "%sCH%d", (strlen(activeChTag) > 0 ? "+" : ""), i + 1);
+      strncat(activeChTag, tag, sizeof(activeChTag) - strlen(activeChTag) - 1);
+    }
   }
 
   cameraOnline = (lastAiResultTime > 0 && (now - lastAiResultTime < 12000));
@@ -558,6 +573,23 @@ void readAllSensors() {
   // ====================================================
   bool aiFire  = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0  && aiConfidence >= 0.70);
   bool aiSmoke = (cameraOnline && strcmp(aiVisionClass, "SMOKE") == 0 && aiConfidence >= 0.70);
+
+  if (activeFlameCount == 1 && singleIdx >= 0) {
+    flameTargetYaw = chAngles[singleIdx];
+    snprintf(flameDirectionLabel, sizeof(flameDirectionLabel), "%s (CH%d)", chNames[singleIdx], singleIdx + 1);
+  } else if (activeFlameCount > 1) {
+    flameTargetYaw = yawSum / activeFlameCount;
+    const char* sector = (flameTargetYaw < 78) ? "Sektor Kiri" : (flameTargetYaw > 102) ? "Sektor Kanan" : "Sektor Tengah";
+    snprintf(flameDirectionLabel, sizeof(flameDirectionLabel), "%s (%s)", sector, activeChTag);
+  } else if (aiFire) {
+    flameTargetYaw = angleBase;
+    strncpy(flameDirectionLabel, "Api Visual (ESP32-CAM)", sizeof(flameDirectionLabel) - 1);
+    flameDirectionLabel[sizeof(flameDirectionLabel) - 1] = '\0';
+  } else {
+    flameTargetYaw = -1;
+    strncpy(flameDirectionLabel, "AMAN", sizeof(flameDirectionLabel) - 1);
+    flameDirectionLabel[sizeof(flameDirectionLabel) - 1] = '\0';
+  }
 
   bool isFire  = (activeFlameCount > 0 || aiFire);
   bool isSmoke = (aiSmoke && !isFire);
@@ -570,11 +602,18 @@ void readAllSensors() {
   }
 
   if (isFire) {
-    // 1. KONDISI KEBAKARAN (Flame 5-Ch / Vision FIRE)
+    // 1. KONDISI KEBAKARAN (Flame 5-Ch / Vision FIRE) + Arah Sumber Api
+    char fireBtnLabel[80];
+    if (flameTargetYaw >= 0) {
+      snprintf(fireBtnLabel, sizeof(fireBtnLabel), "PERINTAH: SEMPROT %s (%d deg)", flameDirectionLabel, flameTargetYaw);
+    } else {
+      strncpy(fireBtnLabel, "PERINTAH: SEMPROT PEMADAMAN DARURAT", sizeof(fireBtnLabel) - 1);
+      fireBtnLabel[sizeof(fireBtnLabel) - 1] = '\0';
+    }
     setEnvironmentalCommand(
       "KEBAKARAN",
       "CMD_FIRE_SUPPRESSION",
-      "PERINTAH: SEMPROT PEMADAMAN DARURAT",
+      fireBtnLabel,
       "{\"cmd\":\"CMD_FIRE_SUPPRESSION\",\"params\":{\"duration\":4000}}"
     );
   }
@@ -653,12 +692,7 @@ void handleFireModeStaged() {
 
   switch (currentFireStage) {
     case STAGE_SERVO1_YAW: {
-      int targetYaw = 90;
-      if (flameCh[0])      targetYaw = 30;
-      else if (flameCh[1]) targetYaw = 60;
-      else if (flameCh[2]) targetYaw = 90;
-      else if (flameCh[3]) targetYaw = 120;
-      else if (flameCh[4]) targetYaw = 150;
+      int targetYaw = (flameTargetYaw >= 0) ? constrain(flameTargetYaw, 30, 150) : 90;
 
       if (angleBase != targetYaw) {
         angleBase += (targetYaw > angleBase) ? 2 : -2;
@@ -866,7 +900,7 @@ void setup() {
   secureClient.setInsecure();
   secureClient.setTimeout(5000);
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  mqttClient.setBufferSize(1024); // Alokasi buffer 1024 bytes agar payload JSON lengkap tidak terpotong
+  mqttClient.setBufferSize(1280); // Alokasi buffer 1280 bytes agar payload JSON + arah flame tidak terpotong
   mqttClient.setKeepAlive(60);
   mqttClient.setCallback(onMqttMessage);
 
@@ -1081,7 +1115,7 @@ void loop() {
   if (now - lastMqttPubTime >= 1000) {
     lastMqttPubTime = now;
     if (mqttClient.connected()) {
-      char jsonBuf[768];
+      char jsonBuf[960];
       int written = snprintf(jsonBuf, sizeof(jsonBuf),
         "{"
         "\"temperature\":%.2f,"
@@ -1090,6 +1124,8 @@ void loop() {
         "\"soil_raw\":%d,"
         "\"flame_detected\":%d,"
         "\"flame_ch\":[%d,%d,%d,%d,%d],"
+        "\"flame_direction\":\"%s\","
+        "\"flame_angle\":%d,"
         "\"zone\":%d,"
         "\"motor_state\":\"%s\","
         "\"motor_driver\":\"L298N_ARM_GPIO\","
@@ -1109,7 +1145,8 @@ void loop() {
         "}",
         currentTemp, currentHumidity, soilMoisturePct, rawSoil,
         (activeFlameCount > 0 ? 1 : 0),
-        flameCh[0], flameCh[1], flameCh[2], flameCh[3], flameCh[4],
+        flameCh[0] ? 1 : 0, flameCh[1] ? 1 : 0, flameCh[2] ? 1 : 0, flameCh[3] ? 1 : 0, flameCh[4] ? 1 : 0,
+        flameDirectionLabel, flameTargetYaw,
         currentZone, motorStateStr,
         (digitalRead(LIMIT_SW_LEFT) == LOW) ? "true" : "false",
         (digitalRead(LIMIT_SW_RIGHT) == LOW) ? "true" : "false",

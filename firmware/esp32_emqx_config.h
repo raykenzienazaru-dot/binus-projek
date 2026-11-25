@@ -40,21 +40,26 @@
 #define PIN_SOIL                34 // Capacitive Soil Moisture v1.2 (ADC1_CH6) - Confirmed
 
 // NOTE: Flame Sensor GPIO assignments (sensor MQ-135 & VL53L0X telah dinonaktifkan).
-// - Flame Sensor DO (Digital) and AO (Analog) are separate pins on the module and must not be conflated onto one pin.
-// Default unverified candidates below:
-
-// Flame Sensor Mode: Select whether DO (digital) or AO (analog) is physically wired.
-// 0 = Digital DO wired, 1 = Analog AO wired
+// Hardware aktif pada esp32_sensor_main.ino menggunakan Array Flame 5-Channel (LM393 Active-LOW):
+// - CH1 (Paling Kiri  ·  30°): GPIO 25
+// - CH2 (Kiri         ·  60°): GPIO 26
+// - CH3 (Tengah       ·  90°): GPIO 27
+// - CH4 (Kanan        · 120°): GPIO 32
+// - CH5 (Paling Kanan · 150°): GPIO 33
 #ifndef FLAME_SENSOR_USE_ANALOG
   #define FLAME_SENSOR_USE_ANALOG 0
 #endif
 
-#ifndef PIN_FLAME_DO
-  #define PIN_FLAME_DO          36 // Sensor VP / GPIO 36 (Candidate for Digital Output DO)
+#ifndef PIN_FLAME_CH1
+  #define PIN_FLAME_CH1         25 // Paling Kiri
+  #define PIN_FLAME_CH2         26 // Kiri
+  #define PIN_FLAME_CH3         27 // Tengah
+  #define PIN_FLAME_CH4         32 // Kanan
+  #define PIN_FLAME_CH5         33 // Paling Kanan
 #endif
 
-#ifndef PIN_FLAME_AO
-  #define PIN_FLAME_AO          39 // Sensor VN / ADC1_CH3 (Candidate if Analog Output AO is wired)
+#ifndef PIN_FLAME_DO
+  #define PIN_FLAME_DO          PIN_FLAME_CH3 // Kanal tengah default
 #endif
 
 #define PIN_FLAME               PIN_FLAME_DO // Default alias
@@ -65,12 +70,12 @@
 #endif
 
 // --- 5. ESP32 Main Node Actuator & Limit Pins (L298N OUT3 & OUT4) ---
-#define PIN_MOTOR_IN3           16 // L298N IN3 (Drives Motor OUT3)
-#define PIN_MOTOR_IN4           17 // L298N IN4 (Drives Motor OUT4)
+#define PIN_MOTOR_IN3           16 // L298N IN1/IN3 (Arah Kiri Rel)
+#define PIN_MOTOR_IN4           17 // L298N IN2/IN4 (Arah Kanan Rel)
 #define PIN_MOTOR_IN1           PIN_MOTOR_IN3 // Legacy alias
 #define PIN_MOTOR_IN2           PIN_MOTOR_IN4 // Legacy alias
-#define PIN_LIMIT_LEFT          32 // Limit Switch Left (INPUT_PULLUP)
-#define PIN_LIMIT_RIGHT         33 // Limit Switch Right (INPUT_PULLUP)
+#define PIN_LIMIT_LEFT          18 // Limit Switch Left (INPUT_PULLUP, Active LOW)
+#define PIN_LIMIT_RIGHT         19 // Limit Switch Right (INPUT_PULLUP, Active LOW)
 
 // --- 6. Railway Cloud AI Inference API ---
 #define RAILWAY_AI_HOST         "be-binus-production.up.railway.app"
