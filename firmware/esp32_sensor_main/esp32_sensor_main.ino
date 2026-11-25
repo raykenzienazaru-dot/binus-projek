@@ -81,8 +81,8 @@
     const char* WIFI_SSID     = SECRET_WIFI_SSID;
     const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
   #else
-    const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-    const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+    const char* WIFI_SSID     = ".";
+    const char* WIFI_PASSWORD = "01020304";
   #endif
   #ifdef SECRET_MQTT_USERNAME
     const char* MQTT_USER     = SECRET_MQTT_USERNAME;
@@ -92,8 +92,8 @@
     const char* MQTT_PASS     = "agrapatha123";
   #endif
 #else
-  const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-  const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+  const char* WIFI_SSID     = ".";
+  const char* WIFI_PASSWORD = "01020304";
   const char* MQTT_USER     = "agrapatha";
   const char* MQTT_PASS     = "agrapatha123";
 #endif

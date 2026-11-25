@@ -18,8 +18,8 @@
 // Compile-time guard: remove or comment this line once real credentials are set.
 #define CREDENTIALS_PLACEHOLDER
 
-#define SECRET_WIFI_SSID        "YOUR_WIFI_SSID"
-#define SECRET_WIFI_PASSWORD    "YOUR_WIFI_PASSWORD"
+#define SECRET_WIFI_SSID        "."
+#define SECRET_WIFI_PASSWORD    "01020304"
 #define SECRET_MQTT_USERNAME    "agrapatha"
 #define SECRET_MQTT_PASSWORD    "agrapatha123"
 

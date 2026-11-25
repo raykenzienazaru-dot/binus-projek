@@ -48,9 +48,16 @@
 // ======================================================
 #if __has_include("credentials.h")
   #include "credentials.h"
+  #ifdef SECRET_WIFI_SSID
+    const char* WIFI_SSID     = SECRET_WIFI_SSID;
+    const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
+  #else
+    const char* WIFI_SSID     = ".";
+    const char* WIFI_PASSWORD = "01020304";
+  #endif
 #else
-  const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-  const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+  const char* WIFI_SSID     = ".";
+  const char* WIFI_PASSWORD = "01020304";
 #endif
 
 // Endpoint Railway FastAPI MobileNetV2
