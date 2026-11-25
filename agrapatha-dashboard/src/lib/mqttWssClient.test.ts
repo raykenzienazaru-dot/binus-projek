@@ -48,6 +48,7 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
       flame_ch: [0, 1, 0, 0, 0],
       flame_direction: 'Kiri (CH2)',
       flame_angle: 60,
+      arm_manual_mode: true,
       zone: 2,
       pump_status: false,
       pump_lockout: false,
@@ -79,6 +80,7 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
       assert.deepEqual(normalized.flameChannels, [0, 1, 0, 0, 0]);
       assert.equal(normalized.flameDirection, 'Kiri (CH2)');
       assert.equal(normalized.flameAngle, 60);
+      assert.equal(normalized.armManualMode, true);
       assert.equal(normalized.systemState, 'SCANNING_ZONES');
     }
   });

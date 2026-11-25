@@ -159,6 +159,7 @@ PubSubClient mqttClient(secureClient);
 
 enum SystemState {
   STATE_INIT,
+  STATE_MANUAL,             // Default saat boot: arm & rel diam menunggu kendali derajat/arah manual dari web
   STATE_HOMING,
   STATE_SCANNING_ZONES,
   STATE_IRRIGATING,
@@ -229,6 +230,7 @@ unsigned long lastIrrigEndTime = 0;
 bool pumpActive = false;
 bool pumpLockout = false;
 bool emergencyStopTriggered = false;
+bool armManualMode = true; // Default MANUAL: 4-DoF Arm & Rel tidak bergerak otomatis tanpa perintah web
 
 // ======================================================
 // STRUKTUR PERINTAH OPERASIONAL (MURNI SENSOR ROBOT)
@@ -244,6 +246,7 @@ char commandPayload[96]      = "{\"cmd\":\"NONE\"}";
 const char* getSystemStateLabel(SystemState st) {
   switch (st) {
     case STATE_INIT:               return "INIT";
+    case STATE_MANUAL:             return "MANUAL";
     case STATE_HOMING:             return "HOMING";
     case STATE_SCANNING_ZONES:     return "SCANNING";
     case STATE_IRRIGATING:         return "IRRIGATING";
@@ -264,15 +267,20 @@ int readFilteredAdc(uint8_t pin, uint8_t samples = 5) {
   return (int)(sum / samples);
 }
 
-void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDelay = 12) {
+void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDelay = 6) {
   targetAngle = constrain(targetAngle, 0, 180);
   if (currentAngle == targetAngle) return;
   int step = (targetAngle > currentAngle) ? 1 : -1;
+  uint8_t tick = 0;
   while (currentAngle != targetAngle) {
     if (emergencyStopTriggered) break;
     currentAngle += step;
     srv.write(currentAngle);
     delay(stepDelay);
+    tick++;
+    if ((tick % 10) == 0 && mqttClient.connected()) {
+      mqttClient.loop();
+    }
   }
 }
 
@@ -355,9 +363,9 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     pumpLockout = false;
     setPump(false);
     stopSlider();
-    currentState = STATE_HOMING;
+    currentState = armManualMode ? STATE_MANUAL : STATE_HOMING;
     sliderMoveStartTime = millis();
-    Serial.println("[EKSEKUSI] Emergency Stop & Lockout direset. Kembali ke Homing.");
+    Serial.printf("[EKSEKUSI] Emergency Stop & Lockout direset -> Mode %s.\n", armManualMode ? "MANUAL" : "AUTO HOMING");
     return;
   }
 
@@ -415,13 +423,13 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
   else if (strcmp(cmdName, "CMD_PARK_SAFE_ZONE") == 0) {
     stopSlider();
     setPump(false);
-    currentState = STATE_HOMING;
+    moveServoSmooth(servoBase, angleBase, 90, 6);
+    moveServoSmooth(servoShoulder, angleShoulder, 45, 6);
+    moveServoSmooth(servoElbow, angleElbow, 45, 6);
+    moveServoSmooth(servoNozzle, angleNozzle, 90, 6);
+    currentState = armManualMode ? STATE_MANUAL : STATE_HOMING;
     sliderMoveStartTime = millis();
-    moveServoSmooth(servoBase, angleBase, 90, 12);
-    moveServoSmooth(servoShoulder, angleShoulder, 30, 12);
-    moveServoSmooth(servoElbow, angleElbow, 30, 12);
-    moveServoSmooth(servoNozzle, angleNozzle, 90, 12);
-    Serial.println("[EKSEKUSI] Arm & slider diparkir di Zona Aman (Home).");
+    Serial.println("[EKSEKUSI] Arm diparkir ke sudut netral aman (90/45/45/90 deg).");
   }
 
   // 3. Perintah Terkait Kondisi KEBAKARAN
@@ -462,16 +470,44 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     int step = params["step"] | 15;
     int targetElbow = constrain(angleElbow - step, 20, 120);
     int targetShoulder = constrain(angleShoulder - step, 20, 120);
-    moveServoSmooth(servoElbow, angleElbow, targetElbow, 12);
-    moveServoSmooth(servoShoulder, angleShoulder, targetShoulder, 12);
+    moveServoSmooth(servoElbow, angleElbow, targetElbow, 6);
+    moveServoSmooth(servoShoulder, angleShoulder, targetShoulder, 6);
+  }
+  else if (strcmp(cmdName, "CMD_SET_ARM_MODE") == 0) {
+    bool reqManual = params.containsKey("manual") ? (bool)params["manual"] : true;
+    armManualMode = reqManual;
+    stopSlider();
+    sliderTransitionActive = false;
+    if (armManualMode) {
+      setPump(false);
+      currentState = STATE_MANUAL;
+      Serial.println("[EKSEKUSI] Lengan & Rel dialihkan ke MODE MANUAL.");
+    } else {
+      currentState = STATE_HOMING;
+      sliderMoveStartTime = millis();
+      Serial.println("[EKSEKUSI] Lengan & Rel dialihkan ke MODE OTOMATIS (Scanning).");
+    }
+  }
+  else if (strcmp(cmdName, "CMD_ARM_HOME") == 0) {
+    stopSlider();
+    moveServoSmooth(servoBase, angleBase, 90, 6);
+    moveServoSmooth(servoShoulder, angleShoulder, 45, 6);
+    moveServoSmooth(servoElbow, angleElbow, 45, 6);
+    moveServoSmooth(servoNozzle, angleNozzle, 90, 6);
+    Serial.println("[EKSEKUSI] 4-DoF Arm diset ke posisi Home Manual (90/45/45/90 deg).");
   }
   else if (strcmp(cmdName, "CMD_SET_SERVO") == 0) {
-    if (params.containsKey("base"))     moveServoSmooth(servoBase, angleBase, params["base"], 12);
-    if (params.containsKey("shoulder")) moveServoSmooth(servoShoulder, angleShoulder, params["shoulder"], 12);
-    if (params.containsKey("elbow"))    moveServoSmooth(servoElbow, angleElbow, params["elbow"], 12);
-    if (params.containsKey("nozzle"))   moveServoSmooth(servoNozzle, angleNozzle, params["nozzle"], 12);
-    Serial.printf("[EKSEKUSI] Sudut Servo Diatur -> Base:%d Sh:%d El:%d Noz:%d\n",
+    if (params.containsKey("base"))     moveServoSmooth(servoBase, angleBase, params["base"], 5);
+    if (params.containsKey("shoulder")) moveServoSmooth(servoShoulder, angleShoulder, params["shoulder"], 5);
+    if (params.containsKey("elbow"))    moveServoSmooth(servoElbow, angleElbow, params["elbow"], 5);
+    if (params.containsKey("nozzle"))   moveServoSmooth(servoNozzle, angleNozzle, params["nozzle"], 5);
+    Serial.printf("[EKSEKUSI] Sudut Servo Manual -> Base:%d Sh:%d El:%d Noz:%d\n",
                   angleBase, angleShoulder, angleElbow, angleNozzle);
+  }
+  else if (strcmp(cmdName, "CMD_STOP_PUMP") == 0) {
+    setPump(false);
+    if (armManualMode) currentState = STATE_MANUAL;
+    Serial.println("[EKSEKUSI] Pompa dimatikan manual.");
   }
   else if (strcmp(cmdName, "CMD_SLIDER_LEFT") == 0 || strcmp(cmdName, "L") == 0) {
     sliderTransitionActive = false;
@@ -904,8 +940,11 @@ void setup() {
   mqttClient.setKeepAlive(60);
   mqttClient.setCallback(onMqttMessage);
 
-  currentState = STATE_HOMING;
+  currentState = armManualMode ? STATE_MANUAL : STATE_HOMING;
   sliderMoveStartTime = millis();
+  Serial.printf("[MODE BOOT] Sistem siap dalam mode %s (Servo Idle: Base=%d Sh=%d El=%d Noz=%d deg).\n",
+                armManualMode ? "MANUAL ARM" : "AUTO HOMING",
+                angleBase, angleShoulder, angleElbow, angleNozzle);
 }
 
 // ======================================================
@@ -935,7 +974,7 @@ void loop() {
     setPump(false);
     if (currentState == STATE_IRRIGATING || currentState == STATE_SUPPRESSION_ACTIVE) {
       lastIrrigEndTime = now;
-      currentState = STATE_SCANNING_ZONES;
+      currentState = armManualMode ? STATE_MANUAL : STATE_SCANNING_ZONES;
     }
     Serial.println("[WATCHDOG] Durasi pompa perintah selesai -> Pompa dimatikan otomatis.");
   }
@@ -943,7 +982,7 @@ void loop() {
     setPump(false);
     lastIrrigEndTime = now;
     if (currentState == STATE_IRRIGATING || currentState == STATE_SUPPRESSION_ACTIVE) {
-      currentState = STATE_SCANNING_ZONES;
+      currentState = armManualMode ? STATE_MANUAL : STATE_SCANNING_ZONES;
     }
     Serial.println("[WATCHDOG] Batas maksimum durasi pompa tercapai -> Safety Shutoff.");
   }
@@ -973,7 +1012,8 @@ void loop() {
     bool flameDetected = (activeFlameCount > 0);
     bool aiFire = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0 && aiConfidence >= 0.70);
 
-    if ((flameDetected || aiFire) &&
+    if (!armManualMode &&
+        (flameDetected || aiFire) &&
         currentState != STATE_FIRE_MODE_STAGED &&
         currentState != STATE_SUPPRESSION_ACTIVE &&
         currentState != STATE_ALARM_FAULT &&
@@ -987,9 +1027,11 @@ void loop() {
     }
   }
 
-  // 5. State Machine Non-Blocking
+  // 5. State Machine Non-Blocking (STATE_MANUAL diam menunggu kendali web)
   if (!sliderManualActive) {
     switch (currentState) {
+      case STATE_MANUAL:
+        break;
       case STATE_HOMING:
         if (digitalRead(LIMIT_SW_LEFT) == LOW) {
           stopSlider();
@@ -1069,7 +1111,7 @@ void loop() {
         if (pumpLockout || soilMoisturePct >= THRESH_SOIL_TARGET || (now - pumpStartTime >= IRRIG_MAX_DURATION_MS)) {
           setPump(false);
           lastIrrigEndTime = now;
-          currentState = STATE_SCANNING_ZONES;
+          currentState = armManualMode ? STATE_MANUAL : STATE_SCANNING_ZONES;
         }
         break;
 
@@ -1083,10 +1125,10 @@ void loop() {
           readAllSensors();
 
           if (activeFlameCount == 0 && strcmp(aiVisionClass, "FIRE") != 0) {
-            moveServoSmooth(servoShoulder, angleShoulder, 45, 12);
-            moveServoSmooth(servoElbow, angleElbow, 45, 12);
-            moveServoSmooth(servoBase, angleBase, 90, 12);
-            currentState = STATE_HOMING;
+            moveServoSmooth(servoShoulder, angleShoulder, 45, 6);
+            moveServoSmooth(servoElbow, angleElbow, 45, 6);
+            moveServoSmooth(servoBase, angleBase, 90, 6);
+            currentState = armManualMode ? STATE_MANUAL : STATE_HOMING;
             sliderMoveStartTime = millis();
           } else {
             currentState = STATE_ALARM_FAULT;
@@ -1133,6 +1175,7 @@ void loop() {
         "\"limit_right\":%s,"
         "\"pump_status\":%s,"
         "\"pump_lockout\":%s,"
+        "\"arm_manual_mode\":%s,"
         "\"servo_angles\":[%d,%d,%d,%d],"
         "\"system_state\":\"%s\","
         "\"uptime_seconds\":%lu,"
@@ -1152,6 +1195,7 @@ void loop() {
         (digitalRead(LIMIT_SW_RIGHT) == LOW) ? "true" : "false",
         pumpActive ? "true" : "false",
         pumpLockout ? "true" : "false",
+        armManualMode ? "true" : "false",
         angleBase, angleShoulder, angleElbow, angleNozzle,
         getSystemStateLabel(currentState),
         (unsigned long)(now / 1000UL),

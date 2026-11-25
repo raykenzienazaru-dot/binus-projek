@@ -34,6 +34,7 @@ export interface PublicTelemetryPayload {
   flameChannels?: number[] | null;
   flameDirection?: string | null;
   flameAngle?: number | null;
+  armManualMode?: boolean | null;
   servoAngles?: number[] | null;
   systemState?: string | null;
   envCondition?: string | null;
@@ -190,6 +191,9 @@ export function sanitizeTelemetry(raw: unknown, nowMs: number, lastReceivedMs: n
 
   const flameAngle = getNum('flameAngle') ?? getNum('flame_angle');
   if (flameAngle !== null) payload.flameAngle = flameAngle;
+
+  const armManualMode = getBool('armManualMode') ?? getBool('arm_manual_mode');
+  if (armManualMode !== null) payload.armManualMode = armManualMode;
 
   const rawServoAngles = data.servoAngles ?? data.servo_angles;
   if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {

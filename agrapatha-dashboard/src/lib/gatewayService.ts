@@ -40,6 +40,7 @@ export interface GatewayTelemetryPayload {
   flameChannels?: number[] | null;
   flameDirection?: string | null;
   flameAngle?: number | null;
+  armManualMode?: boolean | null;
   servoAngles?: number[] | null;
   systemState?: string | null;
   envCondition?: string | null;
@@ -213,6 +214,9 @@ export function parseGatewayTelemetry(data: unknown): GatewayTelemetryPayload | 
 
   const flameAngle = getNumOrNull('flameAngle') ?? getNumOrNull('flame_angle');
   if (flameAngle !== null) result.flameAngle = flameAngle;
+
+  const armManualMode = getBoolOrNull('armManualMode') ?? getBoolOrNull('arm_manual_mode');
+  if (armManualMode !== null) result.armManualMode = armManualMode;
 
   const rawServoAngles = rec.servoAngles ?? rec.servo_angles;
   if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {

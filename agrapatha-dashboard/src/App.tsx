@@ -14,6 +14,7 @@ import {
   AlertOctagon,
   ArrowLeft,
   ArrowRight,
+  Bell,
   Camera,
   CheckCircle2,
   ChevronDown,
@@ -27,8 +28,8 @@ import {
   LayoutGrid,
   Leaf,
   RotateCcw,
-  Send,
   ShieldCheck,
+  Sliders,
   Sparkles,
   Square,
   Upload,
@@ -185,12 +186,14 @@ export const App: React.FC = () => {
   const [flameChannels, setFlameChannels] = useState<number[] | null>(null);
   const [flameDirection, setFlameDirection] = useState<string | null>(null);
   const [flameAngle, setFlameAngle] = useState<number | null>(null);
+  const [armManualMode, setArmManualMode] = useState<boolean | null>(null);
   const [servoAngles, setServoAngles] = useState<number[] | null>(null);
+  const [manualServoAngles, setManualServoAngles] = useState<[number, number, number, number]>([90, 45, 45, 90]);
+  const servoInitializedFromTelemetryRef = useRef<boolean>(false);
   const [systemState, setSystemState] = useState<string | null>(null);
   const [envCondition, setEnvCondition] = useState<string | null>(null);
   const [actionCommand, setActionCommand] = useState<string | null>(null);
   const [commandLabel, setCommandLabel] = useState<string | null>(null);
-  const [commandPayload, setCommandPayload] = useState<unknown>(null);
   const railPositionMm = limitLeft ? 0 : limitRight ? 1200 : zone === 2 ? 600 : zone === 1 ? 150 : zone === 3 ? 1050 : null;
 
   // Direct EMQX Cloud WSS (Port 8084) State for Two-Way Robot Command Dispatch
@@ -338,12 +341,13 @@ export const App: React.FC = () => {
     setFlameChannels(null);
     setFlameDirection(null);
     setFlameAngle(null);
+    setArmManualMode(null);
     setServoAngles(null);
+    servoInitializedFromTelemetryRef.current = false;
     setSystemState(null);
     setEnvCondition(null);
     setActionCommand(null);
     setCommandLabel(null);
-    setCommandPayload(null);
   }, []);
 
   const applyTelemetryPayload = useCallback((payload: GatewayTelemetryPayload) => {
@@ -407,12 +411,27 @@ export const App: React.FC = () => {
     } else {
       setFlameAngle(null);
     }
-    if (Array.isArray(payload.servoAngles)) setServoAngles(payload.servoAngles);
+    if (typeof payload.armManualMode === 'boolean') {
+      setArmManualMode(payload.armManualMode);
+    } else {
+      setArmManualMode(null);
+    }
+    if (Array.isArray(payload.servoAngles)) {
+      setServoAngles(payload.servoAngles);
+      if (!servoInitializedFromTelemetryRef.current && payload.servoAngles.length >= 4) {
+        setManualServoAngles([
+          Math.max(0, Math.min(180, Math.round(payload.servoAngles[0]))),
+          Math.max(0, Math.min(180, Math.round(payload.servoAngles[1]))),
+          Math.max(0, Math.min(180, Math.round(payload.servoAngles[2]))),
+          Math.max(0, Math.min(180, Math.round(payload.servoAngles[3]))),
+        ]);
+        servoInitializedFromTelemetryRef.current = true;
+      }
+    }
     if (typeof payload.systemState === 'string') setSystemState(payload.systemState);
     if (typeof payload.envCondition === 'string') setEnvCondition(payload.envCondition);
     if (typeof payload.actionCommand === 'string') setActionCommand(payload.actionCommand);
     if (typeof payload.commandLabel === 'string') setCommandLabel(payload.commandLabel);
-    if (payload.commandPayload !== undefined) setCommandPayload(payload.commandPayload);
 
     // Evaluate Botanical ANN (grenvis_sensor_model.h) directly on genuine onboard DHT22 & Soil readings
     const currentSensors = sensorValuesRef.current;
@@ -1043,6 +1062,50 @@ export const App: React.FC = () => {
     dispatchRobotCommand(cmdMap[cmd]);
   };
 
+  // Manual 4-DoF Arm Servo Degree Dispatcher (0..180 deg)
+  const SERVO_JOINT_SPECS = useMemo(
+    () => [
+      { idx: 0 as const, key: 'base' as const, label: 'Base J1 (Yaw)', gpio: 13, min: 0, max: 180, defaultDeg: 90, desc: 'Putaran Kiri (30°) ↔ Kanan (150°)' },
+      { idx: 1 as const, key: 'shoulder' as const, label: 'Shoulder J2', gpio: 14, min: 0, max: 180, defaultDeg: 45, desc: 'Elevasi Bahu Lengan (0°–180°)' },
+      { idx: 2 as const, key: 'elbow' as const, label: 'Elbow J3', gpio: 15, min: 0, max: 180, defaultDeg: 45, desc: 'Jangkauan Siku Lengan (0°–180°)' },
+      { idx: 3 as const, key: 'nozzle' as const, label: 'Nozzle J4', gpio: 5, min: 0, max: 180, defaultDeg: 90, desc: 'Sudut Nozzle & Kamera (0°–180°)' },
+    ],
+    []
+  );
+
+  const handleSetAllServoAngles = (angles: [number, number, number, number] = manualServoAngles) => {
+    const clamped: [number, number, number, number] = [
+      Math.max(0, Math.min(180, Math.round(angles[0]))),
+      Math.max(0, Math.min(180, Math.round(angles[1]))),
+      Math.max(0, Math.min(180, Math.round(angles[2]))),
+      Math.max(0, Math.min(180, Math.round(angles[3]))),
+    ];
+    setManualServoAngles(clamped);
+    dispatchRobotCommand(
+      'CMD_SET_SERVO',
+      `Set Arm Manual (${clamped[0]}°/${clamped[1]}°/${clamped[2]}°/${clamped[3]}°)`,
+      {
+        base: clamped[0],
+        shoulder: clamped[1],
+        elbow: clamped[2],
+        nozzle: clamped[3],
+      }
+    );
+  };
+
+  const handleSetSingleServoAngle = (jointIdx: 0 | 1 | 2 | 3, targetDeg: number) => {
+    const clampedDeg = Math.max(0, Math.min(180, Math.round(targetDeg)));
+    const spec = SERVO_JOINT_SPECS[jointIdx];
+    const nextTuple: [number, number, number, number] = [...manualServoAngles] as [number, number, number, number];
+    nextTuple[jointIdx] = clampedDeg;
+    setManualServoAngles(nextTuple);
+    dispatchRobotCommand(
+      'CMD_SET_SERVO',
+      `Set ${spec.label} -> ${clampedDeg}°`,
+      { [spec.key]: clampedDeg }
+    );
+  };
+
   // Record manual watering / suppression
   const handleRecordWatering = () => {
     const newEvt: WateringLogEvent = {
@@ -1085,8 +1148,8 @@ export const App: React.FC = () => {
         wrapper: 'bg-rose-50 border-rose-300 text-rose-900',
         badge: 'bg-rose-600 text-white',
         btn: 'bg-rose-600 text-white hover:bg-rose-700',
-        actionText: 'Buka Pemadaman & SOP',
-        actionTarget: 'treatment',
+        actionText: 'Kontrol Manual Arm & Rel',
+        actionTarget: 'device-control',
       };
     }
 
@@ -1098,7 +1161,7 @@ export const App: React.FC = () => {
         wrapper: 'bg-amber-50 border-amber-300 text-amber-950',
         badge: 'bg-amber-500 text-white',
         btn: 'bg-amber-600 text-white hover:bg-amber-700',
-        actionText: 'Lihat Kontrol & Aksi',
+        actionText: 'Lihat Notifikasi Kondisi',
         actionTarget: 'treatment',
       };
     }
@@ -1138,8 +1201,8 @@ export const App: React.FC = () => {
       { id: 'analysis', label: 'Botanical ANN & Vision' },
       { id: 'benchmarks', label: 'Active Model Specs' },
       { id: 'cameraCapture', label: 'ESP32-CAM Vision' },
-      { id: 'device-control', label: '4-DoF Arm & Rail L298N' },
-      { id: 'treatment', label: 'Mitigation & Irrigation' },
+      { id: 'device-control', label: 'Kontrol Manual Arm & L298N' },
+      { id: 'treatment', label: 'Notifikasi Kondisi Lapangan' },
       { id: 'history', label: 'Historical Trends' },
       { id: 'devices', label: 'Hardware Topology' },
     ],
@@ -3356,50 +3419,266 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Rail & Camera Trigger Controls */}
+                  {/* Kontrol Manual Derajat 4-DoF Arm (Seperti L298N) */}
+                  <div className="bg-gradient-to-br from-violet-50/60 to-white border border-violet-200 rounded-2xl p-4 sm:p-5 mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-violet-200/80">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-violet-100 border border-violet-200 text-violet-700 flex items-center justify-center shrink-0">
+                          <Sliders size={16} />
+                        </div>
+                        <div>
+                          <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
+                            Kontrol Manual Sudut Derajat Lengan Robot 4-DoF (0°–180°)
+                          </span>
+                          <span className="text-[11px] text-[#46655D] block">
+                            Mode default saat ESP32 nyala: <strong className="text-violet-800">{armManualMode === false ? 'AUTO SCAN' : 'MANUAL ARM'}</strong> — atur sudut tiap servo seperti kontrol L298N (aktifkan ARM AKTUATOR di atas).
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_SET_ARM_MODE', 'Aktifkan Mode Manual Arm', { manual: true })}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                            armManualMode !== false
+                              ? 'bg-violet-600 text-white border-violet-700 shadow-xs'
+                              : 'bg-white text-violet-800 border-violet-200 hover:bg-violet-50'
+                          }`}
+                        >
+                          Mode Manual (Default)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_SET_ARM_MODE', 'Aktifkan Mode Auto Scan', { manual: false })}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                            armManualMode === false
+                              ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                              : 'bg-white text-[#46655D] border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          Mode Auto Scan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (servoAngles && servoAngles.length >= 4) {
+                              setManualServoAngles([
+                                Math.max(0, Math.min(180, Math.round(servoAngles[0]))),
+                                Math.max(0, Math.min(180, Math.round(servoAngles[1]))),
+                                Math.max(0, Math.min(180, Math.round(servoAngles[2]))),
+                                Math.max(0, Math.min(180, Math.round(servoAngles[3]))),
+                              ]);
+                              showToast('Slider disamakan ke sudut aktual ESP32.');
+                            }
+                          }}
+                          disabled={!isLiveTelemetry || isTelemetryStale || !servoAngles || servoAngles.length < 4}
+                          className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border bg-white text-[#102A24] border-[#CFE2D9] hover:bg-[#F2F8F5] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Sync Aktual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSetAllServoAngles([90, 45, 45, 90])}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Reset Netral (90/45/45/90°)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSetAllServoAngles()}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Kirim Semua 4 Sudut
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {SERVO_JOINT_SPECS.map((spec) => {
+                        const targetVal = manualServoAngles[spec.idx];
+                        const liveVal =
+                          isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[spec.idx] === 'number'
+                            ? Math.round(servoAngles[spec.idx])
+                            : null;
+                        return (
+                          <div key={spec.key} className="bg-white border border-violet-200/80 rounded-xl p-3.5 flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <span className="text-xs font-extrabold text-[#102A24] block">
+                                  {spec.label} <span className="font-mono text-[10px] text-violet-700">· GPIO {spec.gpio}</span>
+                                </span>
+                                <span className="text-[11px] text-[#46655D]">{spec.desc}</span>
+                              </div>
+                              <div className="text-right font-tabular shrink-0">
+                                <span className="block text-[10px] text-[#46655D] uppercase">Aktual ESP32</span>
+                                <span className="text-xs font-extrabold text-violet-800">
+                                  {liveVal !== null ? `${liveVal}°` : '--'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                              <input
+                                type="range"
+                                min={spec.min}
+                                max={spec.max}
+                                step={1}
+                                value={targetVal}
+                                aria-label={`Slider derajat ${spec.label}`}
+                                onChange={(e) => {
+                                  const nextDeg = Number(e.target.value);
+                                  setManualServoAngles((prev) => {
+                                    const copy = [...prev] as [number, number, number, number];
+                                    copy[spec.idx] = nextDeg;
+                                    return copy;
+                                  });
+                                }}
+                                onPointerUp={() => {
+                                  if (mqttWssStatus === 'connected' && actuatorArmed) {
+                                    handleSetSingleServoAngle(spec.idx, targetVal);
+                                  }
+                                }}
+                                className="flex-1 accent-violet-600 cursor-pointer"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="number"
+                                  min={spec.min}
+                                  max={spec.max}
+                                  value={targetVal}
+                                  aria-label={`Input derajat ${spec.label}`}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value);
+                                    if (!Number.isFinite(raw)) return;
+                                    const clamped = Math.max(0, Math.min(180, Math.round(raw)));
+                                    setManualServoAngles((prev) => {
+                                      const copy = [...prev] as [number, number, number, number];
+                                      copy[spec.idx] = clamped;
+                                      return copy;
+                                    });
+                                  }}
+                                  className="w-14 px-2 py-1 rounded-lg border border-violet-200 text-xs font-bold font-mono text-center text-[#102A24]"
+                                />
+                                <span className="text-xs font-bold text-[#46655D]">°</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                              <div className="flex items-center gap-1">
+                                {[-15, -5, 5, 15].map((delta) => (
+                                  <button
+                                    key={delta}
+                                    type="button"
+                                    onClick={() => handleSetSingleServoAngle(spec.idx, targetVal + delta)}
+                                    disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                                    className="px-2 py-1 rounded-lg bg-[#F2F8F5] hover:bg-violet-50 border border-[#CFE2D9] text-[11px] font-bold font-mono text-[#102A24] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {delta > 0 ? `+${delta}°` : `${delta}°`}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleSetSingleServoAngle(spec.idx, targetVal)}
+                                disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                                className="px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold font-mono cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Terapkan {targetVal}°
+                              </button>
+                            </div>
+
+                            {spec.idx === 0 && (
+                              <div className="pt-2 border-t border-violet-100 flex items-center gap-1 flex-wrap">
+                                <span className="text-[10px] font-bold text-[#46655D] mr-1">Arah Sektor:</span>
+                                {FLAME_CHANNEL_SPECS.map((ch) => (
+                                  <button
+                                    key={ch.key}
+                                    type="button"
+                                    onClick={() => handleSetSingleServoAngle(0, ch.angleDeg)}
+                                    disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                                    title={`Arahkan Base J1 ke ${ch.key} (${ch.label} ${ch.angleDeg}°)`}
+                                    className="px-2 py-0.5 rounded-md bg-violet-50 hover:bg-violet-100 border border-violet-200 text-[10px] font-bold font-mono text-violet-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {ch.angleDeg}° {ch.shortLabel}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rail L298N, Pompa Manual & Camera Trigger Controls */}
                   <div
-                    className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5"
                     role="group"
-                    aria-label="Kontrol Scanner Motor Rel L298N"
+                    aria-label="Kontrol Manual Motor Rel L298N, Pompa & Kamera"
                   >
                     <button
                       type="button"
                       onClick={() => handleRailCommand('L')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <ArrowLeft size={15} />
-                      <span>Move Left (L)</span>
+                      <ArrowLeft size={14} />
+                      <span>Rel Kiri (L)</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleRailCommand('S')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-amber-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-[#F2F8F5] hover:bg-amber-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Square size={15} />
-                      <span>Stop Motor (S)</span>
+                      <Square size={14} />
+                      <span>Stop Rel (S)</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleRailCommand('R')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-[#F2F8F5] hover:bg-emerald-50 text-[#102A24] border-[#CFE2D9] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span>Move Right (R)</span>
-                      <ArrowRight size={15} />
+                      <span>Rel Kanan (R)</span>
+                      <ArrowRight size={14} />
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleRailCommand('C')}
                       disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-[#0F766E] hover:bg-[#0D5D57] text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#0F766E] hover:bg-[#0D5D57] text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Camera size={15} />
-                      <span>Capture ESP32-CAM (C)</span>
+                      <Camera size={14} />
+                      <span>Foto CAM (C)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_START_IRRIGATION', 'Nyalakan Pompa Manual', { duration: 4000 })}
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed || Boolean(pumpLockout)}
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-sky-50 hover:bg-sky-100 text-sky-900 border-sky-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Droplet size={14} />
+                      <span>Pompa ON (4s)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_STOP_PUMP', 'Matikan Pompa Manual')}
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-rose-50 text-rose-800 border-rose-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Square size={14} />
+                      <span>Matikan Pompa</span>
                     </button>
                   </div>
 
@@ -3480,15 +3759,16 @@ export const App: React.FC = () => {
                   </div>
                 </section>
 
-                {/* 7. ACTION COMMAND SOLUTIONS & MITIGATION (#treatment) */}
+                {/* 7. REAL-TIME CONDITION NOTIFICATIONS & ADVISORIES (#treatment) */}
                 <section className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-emerald-500 p-5 sm:p-6" id="treatment">
                   <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                     <div>
                       <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
-                        Executable Robotic Solvers · Sensor Onboard &amp; Vision AI
+                        Real-Time Condition Notifications · Sensor Onboard, BMKG &amp; Vision AI
                       </span>
-                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
-                        Pusat Solusi Perintah Aksi (Kering · Basah · Kebakaran · Asap Visual)
+                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5 flex items-center gap-2">
+                        <Bell size={18} className="text-[#0F766E] shrink-0" />
+                        <span>Pusat Notifikasi &amp; Pemberitahuan Kondisi (Kering · Basah · Kebakaran · Asap Visual)</span>
                       </h2>
                     </div>
                     <span
@@ -3502,203 +3782,132 @@ export const App: React.FC = () => {
                               : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       }`}
                     >
-                      Kondisi Aktif: {isLiveTelemetry && !isTelemetryStale && envCondition ? envCondition : 'STANDBY'}
+                      Status Pemberitahuan: {isLiveTelemetry && !isTelemetryStale && envCondition ? envCondition : 'STANDBY'}
                     </span>
                   </div>
 
-                  {/* Active Recommendation Execute Bar */}
+                  {/* Notification Summary Banner (Information Only) */}
                   <div className="bg-gradient-to-r from-[#F2F8F5] to-[#F4F9FC] border border-[#CFE2D9] rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="min-w-0">
                       <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
-                        Rekomendasi Eksekusi Firmware Real-Time
+                        Pemberitahuan Sensor Lapangan Real-Time (Read-Only · Arm Mode Manual)
                       </span>
                       <div className="text-sm sm:text-[15px] font-bold text-[#102A24] mt-0.5 truncate">
-                        {isLiveTelemetry && !isTelemetryStale && (commandLabel || actionCommand)
-                          ? `${commandLabel || actionCommand} (${actionCommand || 'CMD_IDLE'})`
-                          : 'Menunggu telemetri kondisi sensor dari ESP32 Main...'}
+                        {isLiveTelemetry && !isTelemetryStale && (commandLabel || envCondition)
+                          ? `${envCondition || 'NORMAL'} — ${flameInfo.isFireActive ? flameInfo.detailLabel : commandLabel || 'Kondisi terpantau aman'}`
+                          : 'Menunggu pemberitahuan kondisi sensor dari ESP32 Main...'}
                       </div>
-                      {commandPayload ? (
-                        <code className="text-xs font-mono text-[#0F766E] block mt-0.5 truncate">
-                          Payload: {typeof commandPayload === 'string' ? commandPayload : JSON.stringify(commandPayload)}
-                        </code>
-                      ) : null}
+                      <span className="text-xs text-[#46655D] block mt-0.5">
+                        Kartu ini bersifat informasi notifikasi. Pergerakan derajat Arm 4-DoF &amp; motor rel L298N diatur manual melalui panel kontrol di atas.
+                      </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!actionCommand || actionCommand === 'CMD_IDLE') return;
-                        let parsedParams: Record<string, unknown> | undefined;
-                        if (commandPayload && typeof commandPayload === 'object' && 'params' in (commandPayload as Record<string, unknown>)) {
-                          const p = (commandPayload as { params?: unknown }).params;
-                          if (p && typeof p === 'object') parsedParams = p as Record<string, unknown>;
-                        } else if (typeof commandPayload === 'string') {
-                          try {
-                            const parsed = JSON.parse(commandPayload) as { params?: Record<string, unknown> };
-                            if (parsed?.params && typeof parsed.params === 'object') parsedParams = parsed.params;
-                          } catch {
-                            // Ignore malformed string payload
-                          }
-                        }
-                        dispatchRobotCommand(actionCommand, commandLabel || actionCommand, parsedParams);
-                      }}
-                      disabled={
-                        mqttWssStatus !== 'connected' ||
-                        !actuatorArmed ||
-                        !isLiveTelemetry ||
-                        isTelemetryStale ||
-                        !actionCommand ||
-                        actionCommand === 'CMD_IDLE'
-                      }
-                      className="shrink-0 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#0F766E] to-[#059669] hover:from-[#0D5D57] hover:to-[#047857] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => scrollToSection('device-control')}
+                      className="shrink-0 px-4 py-2 rounded-xl bg-white hover:bg-[#F2F8F5] text-[#0F766E] border border-[#CFE2D9] font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                     >
-                      <Send size={14} />
-                      <span>Eksekusi Perintah Aktif</span>
+                      <Sliders size={14} />
+                      <span>Ke Kontrol Manual Arm &amp; L298N</span>
                     </button>
                   </div>
 
-                  {/* 4 Condition Cards */}
+                  {/* 4 Notification Cards (Pure Advisories - No Action Buttons) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-2">
-                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-amber-500 ${envCondition === 'KERING' && isLiveTelemetry && !isTelemetryStale ? 'bg-amber-50 border-amber-300' : 'bg-[#FFFDF7] border-amber-200/80'}`}>
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-amber-500 ${envCondition === 'KERING' && isLiveTelemetry && !isTelemetryStale ? 'bg-amber-50 border-amber-300 shadow-xs' : 'bg-[#FFFDF7] border-amber-200/80'}`}>
                       <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
                           <Droplet size={15} className="text-amber-500" />
                           1. KERING (Soil &lt; 35% / Heat Stress)
                         </span>
-                        <span className="text-[11px] font-mono text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md">
-                          {bmkgCorrelation.hasRainForecast ? 'BMKG: Potensi Hujan' : 'Pompa & Misting'}
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                          isLiveTelemetry && !isTelemetryStale && (envCondition === 'KERING' || (typeof soilMoisture === 'number' && soilMoisture < 35))
+                            ? 'bg-amber-500 text-white animate-pulse'
+                            : 'text-amber-800 bg-amber-100/70'
+                        }`}>
+                          {isLiveTelemetry && !isTelemetryStale && (envCondition === 'KERING' || (typeof soilMoisture === 'number' && soilMoisture < 35))
+                            ? 'NOTIFIKASI TERPICU'
+                            : bmkgCorrelation.hasRainForecast ? 'BMKG: Potensi Hujan' : 'SIAGA AMAN'}
                         </span>
                       </div>
-                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
-                        Menyalakan pompa irigasi atau kabut misting (watchdog 12 detik), disesuaikan dengan prakiraan hujan BMKG Sawah Besar.
+                      <p className="text-xs text-[#46655D] mb-2.5 m-0 leading-relaxed">
+                        Pemberitahuan bila kelembapan tanah turun di bawah 35% atau terjadi heat stress. Pertimbangkan penyiraman manual apabila prakiraan BMKG Sawah Besar tidak menunjukkan hujan.
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_START_IRRIGATION', 'Aktifkan Irigasi (KERING)')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Start Irrigation
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_START_MISTING', 'Aktifkan Misting Kanopi')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Start Misting
-                        </button>
+                      <div className="text-[11px] font-mono bg-white/90 border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-[#102A24] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Soil: {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : '--'} · Suhu: {isLiveTelemetry && !isTelemetryStale && typeof temp === 'number' ? `${temp.toFixed(1)}°C` : '--'}</span>
+                        <span className="text-amber-800">{bmkgCorrelation.hasRainForecast ? 'BMKG: Hujan diprakirakan' : 'BMKG: Kering'}</span>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-emerald-500 ${envCondition === 'BASAH' && isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-50 border-emerald-300' : 'bg-[#F5FBF8] border-emerald-200/80'}`}>
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-emerald-500 ${envCondition === 'BASAH' && isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-50 border-emerald-300 shadow-xs' : 'bg-[#F5FBF8] border-emerald-200/80'}`}>
                       <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
                           <ShieldCheck size={15} className="text-emerald-600" />
-                          2. BASAH (Soil &gt; 80% / Jenuh)
+                          2. BASAH (Soil &gt; 80% / Jenuh Air)
                         </span>
-                        <span className="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-md">Interlock Lockout</span>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                          isLiveTelemetry && !isTelemetryStale && (envCondition === 'BASAH' || (typeof soilMoisture === 'number' && soilMoisture > 80))
+                            ? 'bg-emerald-600 text-white animate-pulse'
+                            : 'text-emerald-800 bg-emerald-100/70'
+                        }`}>
+                          {isLiveTelemetry && !isTelemetryStale && (envCondition === 'BASAH' || (typeof soilMoisture === 'number' && soilMoisture > 80))
+                            ? 'NOTIFIKASI TERPICU'
+                            : 'SIAGA AMAN'}
+                        </span>
                       </div>
-                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
-                        Mengunci pompa irigasi agar tidak over-watering dan memarkirkan lengan ke zona aman.
+                      <p className="text-xs text-[#46655D] mb-2.5 m-0 leading-relaxed">
+                        Pemberitahuan kejenuhan air media tanam (&gt;80%). Interlock pompa mengunci irigasi berlebih sementara posisi lengan tetap dalam kendali manual operator.
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_PUMP_LOCKOUT', 'Kunci Pompa (BASAH)')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Pump Lockout
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-900 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Park Safe Zone
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_UNLOCK_PUMP', 'Buka Kunci Pompa')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Unlock Pump
-                        </button>
+                      <div className="text-[11px] font-mono bg-white/90 border border-emerald-200/80 rounded-lg px-2.5 py-1.5 text-[#102A24] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Soil: {isLiveTelemetry && !isTelemetryStale && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : '--'} · RH: {isLiveTelemetry && !isTelemetryStale && typeof rh === 'number' ? `${rh.toFixed(0)}%` : '--'}</span>
+                        <span className="text-emerald-800">Lockout: {pumpLockout ? 'AKTIF' : 'NONAKTIF'}</span>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-rose-500 ${envCondition === 'KEBAKARAN' && isLiveTelemetry && !isTelemetryStale ? 'bg-rose-50 border-rose-300' : 'bg-[#FFF8F9] border-rose-200/80'}`}>
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-rose-500 ${envCondition === 'KEBAKARAN' || flameInfo.isFireActive ? 'bg-rose-50 border-rose-300 shadow-xs' : 'bg-[#FFF8F9] border-rose-200/80'}`}>
                       <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
                           <Flame size={15} className="text-rose-600" />
                           3. KEBAKARAN (Flame 5-Ch / Vision Fire)
                         </span>
-                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${flameInfo.isFireActive ? 'bg-rose-600 text-white font-bold animate-pulse' : 'text-rose-800 bg-rose-100/70'}`}>
-                          {flameInfo.isFireActive ? flameInfo.sectorSummary : 'Staged Suppression'}
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                          flameInfo.isFireActive || envCondition === 'KEBAKARAN'
+                            ? 'bg-rose-600 text-white animate-pulse'
+                            : 'text-rose-800 bg-rose-100/70'
+                        }`}>
+                          {flameInfo.isFireActive ? flameInfo.sectorSummary : envCondition === 'KEBAKARAN' ? 'API TERDETEKSI' : 'SIAGA AMAN'}
                         </span>
                       </div>
-                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
-                        Mengarahkan rel + lengan 4-DoF ke sektor Flame 5-Channel aktif, verifikasi optik OV2640, dan semprot pemadaman.
+                      <p className="text-xs text-[#46655D] mb-2.5 m-0 leading-relaxed">
+                        {flameInfo.isFireActive
+                          ? `PEMBERITAHUAN DARURAT: ${flameInfo.detailLabel}. Atur derajat Base J1 ke ${flameInfo.targetYawDeg ?? 90}° dan nyalakan pompa manual di panel kontrol bila diperlukan.`
+                          : 'Pemberitahuan deteksi nyala api 5 sektor (CH1 P.Kiri s.d. CH5 P.Kanan) dan konfirmasi visual MobileNetV2.'}
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_FIRE_SUPPRESSION', 'Pemadaman Api Aktif', { duration: 4000 })}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Fire Suppression
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_FIRE_SCAN_START', 'Mulai Scan Zona Api')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-rose-300 text-rose-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Fire Scan Start
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_EVACUATE_OPPOSITE', 'Evakuasi Lengan ke Zona Aman')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-[#102A24] text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Evacuate Opposite
-                        </button>
+                      <div className="text-[11px] font-mono bg-white/90 border border-rose-200/80 rounded-lg px-2.5 py-1.5 text-[#102A24] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Arah Flame: {isLiveTelemetry && !isTelemetryStale ? flameInfo.sectorSummary : '--'}</span>
+                        <span className="text-rose-800">Angin BMKG: {bmkgStep ? `${bmkgStep.windSpeedKmh} km/h` : '--'}</span>
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-indigo-500 ${envCondition === 'ASAP_VISUAL' && isLiveTelemetry && !isTelemetryStale ? 'bg-indigo-50 border-indigo-300' : 'bg-[#F6F8FF] border-indigo-200/80'}`}>
+                    <div className={`rounded-xl p-4 border border-t-[3px] border-t-indigo-500 ${envCondition === 'ASAP_VISUAL' && isLiveTelemetry && !isTelemetryStale ? 'bg-indigo-50 border-indigo-300 shadow-xs' : 'bg-[#F6F8FF] border-indigo-200/80'}`}>
                       <div className="flex items-center justify-between mb-1.5 gap-2">
                         <span className="text-[13px] font-bold text-[#102A24] flex items-center gap-1.5">
                           <Wind size={15} className="text-indigo-600" />
                           4. ASAP_VISUAL (Vision Smoke / Angin BMKG)
                         </span>
-                        <span className="text-[11px] font-mono text-indigo-800 bg-indigo-100/70 px-2 py-0.5 rounded-md">Visual Verify</span>
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold ${
+                          isLiveTelemetry && !isTelemetryStale && envCondition === 'ASAP_VISUAL'
+                            ? 'bg-indigo-600 text-white animate-pulse'
+                            : 'text-indigo-800 bg-indigo-100/70'
+                        }`}>
+                          {isLiveTelemetry && !isTelemetryStale && envCondition === 'ASAP_VISUAL' ? 'NOTIFIKASI TERPICU' : 'SIAGA AMAN'}
+                        </span>
                       </div>
-                      <p className="text-xs text-[#46655D] mb-3 m-0 leading-relaxed">
-                        Memicu pemindaian optik ESP32-CAM dan menyesuaikan kesiapsiagaan berdasarkan kecepatan angin BMKG Sawah Besar.
+                      <p className="text-xs text-[#46655D] mb-2.5 m-0 leading-relaxed">
+                        Pemberitahuan deteksi asap dari ESP32-CAM MobileNetV2. Operator dapat mengarahkan nozzle kamera secara manual menggunakan slider derajat di panel kontrol atas.
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_VERIFY_SMOKE', 'Verifikasi Ulang Asap via Kamera')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Verify Smoke (Cam)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_FIRE_SCAN_START', 'Arahkan Arm ke Sumber Asap')}
-                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
-                          className="px-3.5 py-2 rounded-xl bg-white border border-indigo-300 text-indigo-800 text-xs font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Scan Sector Arm
-                        </button>
+                      <div className="text-[11px] font-mono bg-white/90 border border-indigo-200/80 rounded-lg px-2.5 py-1.5 text-[#102A24] flex items-center justify-between gap-2 flex-wrap">
+                        <span>Vision: {wildfireResult ? wildfireResult.predicted_label : edgePrediction || 'Standby'}</span>
+                        <span className="text-indigo-800">BMKG Sawah Besar: {bmkgStep ? bmkgStep.weatherDesc : '--'}</span>
                       </div>
                     </div>
                   </div>
