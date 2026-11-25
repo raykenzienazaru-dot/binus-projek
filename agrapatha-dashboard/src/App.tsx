@@ -57,6 +57,7 @@ import {
 } from './lib/cameraCapture';
 import { predictWildfireImage } from './lib/wildfireService';
 import { MqttWssClient } from './lib/mqttWssClient';
+import { getEmqxWssConfig } from './config/iotConfig';
 import {
   parseGatewayTelemetry,
   subscribeGatewayTelemetry,
@@ -186,19 +187,25 @@ export const App: React.FC = () => {
   const railPositionMm = limitLeft ? 0 : limitRight ? 1200 : zone === 2 ? 600 : zone === 1 ? 150 : zone === 3 ? 1050 : null;
 
   // Direct EMQX Cloud WSS (Port 8084) State for Two-Way Robot Command Dispatch
-  const [mqttHostInput, setMqttHostInput] = useState<string>('q2277711.ala.asia-southeast1.emqxsl.com');
+  const emqxWssDefaults = useMemo(() => getEmqxWssConfig(), []);
+  const [mqttHostInput, setMqttHostInput] = useState<string>(emqxWssDefaults.host);
   const [mqttUserInput, setMqttUserInput] = useState<string>(() => {
     try {
-      return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('agrapatha_mqtt_user')) || '';
+      return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('agrapatha_mqtt_user')) || emqxWssDefaults.username;
     } catch {
-      return '';
+      return emqxWssDefaults.username;
     }
   });
-  const [mqttPassInput, setMqttPassInput] = useState<string>('');
+  const [mqttPassInput, setMqttPassInput] = useState<string>(emqxWssDefaults.password);
   const [mqttWssStatus, setMqttWssStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [mqttWssError, setMqttWssError] = useState<string | null>(null);
   const [actuatorArmed, setActuatorArmed] = useState<boolean>(false);
   const mqttWssRef = useRef<MqttWssClient | null>(null);
+  const mqttWssStatusRef = useRef(mqttWssStatus);
+  useEffect(() => {
+    mqttWssStatusRef.current = mqttWssStatus;
+  }, [mqttWssStatus]);
+  const hadSseTelemetryRef = useRef<boolean>(false);
 
   // Watering / Suppression log state initialized empty (live session logs only)
   const [wateringEvents, setWateringEvents] = useState<WateringLogEvent[]>([]);
@@ -481,21 +488,22 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Subscribe to read-only Backend Gateway Server-Sent Events (/api/telemetry/stream)
+  // Subscribe to read-only Backend Gateway Server-Sent Events (/api/telemetry/stream) when available
   useEffect(() => {
     const unsubscribe = subscribeGatewayTelemetry({
       onTelemetry: (payload: GatewayTelemetryPayload) => {
+        hadSseTelemetryRef.current = true;
         applyTelemetryPayload(payload);
       },
       onStatusChange: (status) => {
         setGatewayStatus(status);
-        if ((status === 'error' || status === 'closed') && mqttWssStatus !== 'connected') {
+        if ((status === 'error' || status === 'closed') && hadSseTelemetryRef.current && mqttWssStatusRef.current !== 'connected') {
           resetTelemetryState();
         }
       },
       onError: () => {
         setGatewayStatus('error');
-        if (mqttWssStatus !== 'connected') {
+        if (hadSseTelemetryRef.current && mqttWssStatusRef.current !== 'connected') {
           resetTelemetryState();
         }
       },
@@ -504,82 +512,98 @@ export const App: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [applyTelemetryPayload, resetTelemetryState, mqttWssStatus]);
+  }, [applyTelemetryPayload, resetTelemetryState]);
 
-  // Cleanup EMQX WSS on unmount
+  const startMqttWssConnection = useCallback(
+    (host: string, username: string, password: string, silent = false) => {
+      const cleanHost = host.trim();
+      const cleanUser = username.trim();
+      if (!cleanHost || !cleanUser || !password) {
+        if (!silent) {
+          setMqttWssError('Masukkan Host EMQX, Username, dan Password terlebih dahulu.');
+          showToast('Kredensial MQTT WSS belum lengkap.');
+        }
+        return;
+      }
+
+      setMqttWssStatus('connecting');
+      setMqttWssError(null);
+      mqttWssRef.current?.disconnect();
+
+      const client = new MqttWssClient({
+        host: cleanHost,
+        port: emqxWssDefaults.port,
+        username: cleanUser,
+        password,
+        telemetryTopics: emqxWssDefaults.telemetryTopics,
+        onConnect: () => {
+          setMqttWssStatus('connected');
+          setMqttWssError(null);
+          if (!silent) {
+            showToast(`Terhubung ke EMQX WSS (${cleanHost}:${emqxWssDefaults.port})`);
+          }
+        },
+        onMessage: (_topic, payloadStr) => {
+          try {
+            const parsedRaw = JSON.parse(payloadStr);
+            if (parsedRaw && typeof parsedRaw === 'object') {
+              const normalized = parseGatewayTelemetry({
+                ...(parsedRaw as Record<string, unknown>),
+                freshness: 'FRESH',
+                timestamp: Date.now(),
+              });
+              if (normalized) {
+                applyTelemetryPayload(normalized);
+              }
+            }
+          } catch {
+            // ignore malformed telemetry
+          }
+        },
+        onError: (errMsg) => {
+          setMqttWssStatus('error');
+          setMqttWssError(errMsg);
+          setActuatorArmed(false);
+          if (!silent) {
+            showToast(errMsg);
+          }
+        },
+        onClose: () => {
+          setMqttWssStatus('disconnected');
+          setActuatorArmed(false);
+        },
+      });
+
+      mqttWssRef.current = client;
+      client.connect();
+    },
+    [emqxWssDefaults.port, emqxWssDefaults.telemetryTopics, applyTelemetryPayload, showToast]
+  );
+
+  // Auto-connect read-only EMQX WSS telemetry stream on mount (essential on Vercel/static deploy)
   useEffect(() => {
+    startMqttWssConnection(mqttHostInput, mqttUserInput, mqttPassInput, true);
     return () => {
       mqttWssRef.current?.disconnect();
     };
+    // Intentionally connect once on mount using initial defaults while keeping actuators Fail-Closed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleConnectMqttWss = useCallback((e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const host = mqttHostInput.trim();
-    const username = mqttUserInput.trim();
-    const password = mqttPassInput;
-
-    if (!host || !username || !password) {
-      setMqttWssError('Masukkan Host EMQX, Username, dan Password terlebih dahulu.');
-      showToast('Kredensial MQTT WSS belum lengkap.');
-      return;
-    }
-
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('agrapatha_mqtt_user', username);
-      }
-    } catch {
-      // ignore
-    }
-
-    setMqttWssStatus('connecting');
-    setMqttWssError(null);
-    mqttWssRef.current?.disconnect();
-
-    const client = new MqttWssClient({
-      host,
-      port: 8084,
-      username,
-      password,
-      telemetryTopic: 'agrapatha/telemetry',
-      onConnect: () => {
-        setMqttWssStatus('connected');
-        setMqttWssError(null);
-        showToast(`Terhubung ke EMQX WSS (${host}:8084)`);
-      },
-      onMessage: (_topic, payloadStr) => {
-        try {
-          const parsedRaw = JSON.parse(payloadStr);
-          if (parsedRaw && typeof parsedRaw === 'object') {
-            const normalized = parseGatewayTelemetry({
-              ...(parsedRaw as Record<string, unknown>),
-              freshness: 'FRESH',
-              timestamp: Date.now(),
-            });
-            if (normalized) {
-              applyTelemetryPayload(normalized);
-            }
-          }
-        } catch {
-          // ignore malformed telemetry
+  const handleConnectMqttWss = useCallback(
+    (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      try {
+        if (typeof sessionStorage !== 'undefined' && mqttUserInput.trim()) {
+          sessionStorage.setItem('agrapatha_mqtt_user', mqttUserInput.trim());
         }
-      },
-      onError: (errMsg) => {
-        setMqttWssStatus('error');
-        setMqttWssError(errMsg);
-        setActuatorArmed(false);
-        showToast(errMsg);
-      },
-      onClose: () => {
-        setMqttWssStatus('disconnected');
-        setActuatorArmed(false);
-      },
-    });
-
-    mqttWssRef.current = client;
-    client.connect();
-  }, [mqttHostInput, mqttUserInput, mqttPassInput, applyTelemetryPayload, showToast]);
+      } catch {
+        // ignore
+      }
+      startMqttWssConnection(mqttHostInput, mqttUserInput, mqttPassInput, false);
+    },
+    [mqttHostInput, mqttUserInput, mqttPassInput, startMqttWssConnection]
+  );
 
   const handleDisconnectMqttWss = useCallback(() => {
     mqttWssRef.current?.disconnect();
@@ -1098,16 +1122,50 @@ export const App: React.FC = () => {
 
   // Dynamic Alert Banner Config
   const alertBanner = useMemo(() => {
-    if (!isLiveTelemetry || isTelemetryStale || !hazardResult || !floraResult) {
+    if (!isLiveTelemetry || isTelemetryStale) {
       return {
         severity: 'STANDBY',
-        title: isTelemetryStale ? 'Device Offline · Telemetri Stale' : 'Device Offline · Menunggu Data Telemetri',
-        description: 'Konsol siap menerima stream telemetri real time dari backend gateway (/api/telemetry/stream). Model AI model_hazard.h dan grenvis_sensor_model.h akan mengevaluasi risiko segera setelah data sensor aktif diterima.',
+        title: isTelemetryStale
+          ? 'Device Offline · Telemetri Stale'
+          : mqttWssStatus === 'connected'
+            ? 'EMQX WSS :8084 Terhubung · Menunggu Paket Sensor ESP32'
+            : 'Device Offline · Menghubungkan ke EMQX WSS (:8084)',
+        description:
+          mqttWssStatus === 'connected'
+            ? 'Koneksi browser ke broker EMQX Serverless (:8084) aktif. Data sensor akan tampil otomatis saat NodeMCU ESP32 mengirim payload ke agrapatha/telemetry.'
+            : 'Menghubungkan stream telemetri via EMQX WSS (:8084) atau Gateway (/api/telemetry/stream). Status sensor tetap ditahan standby bila offline.',
         wrapper: 'bg-[#F1F5F3] border-[#DCE4E1] text-[#2C2922]',
         badge: 'bg-[#E5EBE8] text-[#4D6A75] border border-[#DCE4E1]',
         btn: 'bg-[#4E8577] text-white hover:bg-[#3D6E62]',
-        actionText: 'Lihat Status Sensor',
-        actionTarget: 'monitoring',
+        actionText: 'Cek Koneksi & Kontrol',
+        actionTarget: 'device-control',
+      };
+    }
+
+    if (envCondition === 'KEBAKARAN' || envCondition === 'GAS_BERACUN' || (typeof flameDetected === 'number' && flameDetected > 0)) {
+      return {
+        severity: envCondition || 'CRITICAL',
+        title: `Peringatan Darurat Sensor Onboard: ${envCondition || 'KEBAKARAN'}`,
+        description: `${commandLabel || actionCommand || 'Anomali sensor aktif'} · Suhu ${typeof temp === 'number' ? temp.toFixed(1) : '--'}°C, Gas MQ-135 ${typeof mq135Raw === 'number' ? mq135Raw : '--'} ADC, Zona ${zone ?? '--'}.`,
+        wrapper: 'bg-[#FEEAEA] border-[#FCCECE] text-[#961C1C]',
+        badge: 'bg-[#FCCECE] text-[#961C1C]',
+        btn: 'bg-[#961C1C] text-white hover:bg-[#7D1515]',
+        actionText: 'Buka Solusi Aksi',
+        actionTarget: 'treatment',
+      };
+    }
+
+    if (!hazardResult || !floraResult) {
+      const isFaultOrWarn = envCondition === 'FAULT' || envCondition === 'KERING' || envCondition === 'BASAH';
+      return {
+        severity: envCondition || systemState || 'LIVE',
+        title: `Telemetri Live Onboard Diterima (${systemState || 'ESP32-MAIN'})`,
+        description: `${commandLabel ? `${commandLabel} · ` : ''}Suhu ${typeof temp === 'number' ? temp.toFixed(1) : '--'}°C · RH ${typeof rh === 'number' ? rh.toFixed(0) : '--'}% · Tanah ${typeof soilMoisture === 'number' ? soilMoisture.toFixed(1) : '--'}% · MQ-135 ${typeof mq135Raw === 'number' ? mq135Raw : '--'} ADC`,
+        wrapper: isFaultOrWarn ? 'bg-[#FEF7E8] border-[#FDE3B5] text-[#8A570C]' : 'bg-[#EFF3EF] border-[#A6B49E] text-[#263A35]',
+        badge: isFaultOrWarn ? 'bg-[#FDE3B5] text-[#8A570C]' : 'bg-[#A6B49E]/30 text-[#263A35] border border-[#A6B49E]',
+        btn: isFaultOrWarn ? 'bg-[#8A570C] text-white hover:bg-[#704508]' : 'bg-[#4E635E] text-white hover:bg-[#3D4F4B]',
+        actionText: 'Lihat Kontrol & Aksi',
+        actionTarget: 'device-control',
       };
     }
     if (hazardResult.riskLevel === 'HIGH') {
@@ -1144,7 +1202,7 @@ export const App: React.FC = () => {
       actionText: 'Lihat Telemetri',
       actionTarget: 'monitoring',
     };
-  }, [isLiveTelemetry, isTelemetryStale, hazardResult, floraResult, ffmc, dmc, soilMoisture, temp, rh]);
+  }, [isLiveTelemetry, isTelemetryStale, mqttWssStatus, envCondition, systemState, flameDetected, commandLabel, actionCommand, mq135Raw, zone, hazardResult, floraResult, ffmc, dmc, soilMoisture, temp, rh]);
 
   const navItems = useMemo(
     () => [
@@ -2024,15 +2082,21 @@ export const App: React.FC = () => {
                             : hazardResult.riskLevel === 'MODERATE'
                               ? 'Risiko Kebakaran Menengah — Transisi Pengeringan Bahan Bakar Halus'
                               : 'Kondisi Kanopi & Serasah Hutan Stabil — Risiko Penyalaan Rendah'
-                          : 'Sistem Monitoring Siaga — Menunggu Telemetri Live Gateway'}
+                          : isLiveTelemetry && !isTelemetryStale
+                            ? `Telemetri Sensor Onboard Aktif — Status ${systemState || envCondition || 'LIVE'}`
+                            : 'Sistem Monitoring Siaga — Menunggu Telemetri Live'}
                       </h3>
                       <p className="text-xs lg:text-sm text-[#F1D2A1]/90 leading-relaxed max-w-2xl">
                         {isLiveTelemetry && !isTelemetryStale && hazardResult && typeof temp === 'number' && typeof rh === 'number' && typeof wind === 'number' && typeof rain === 'number' && typeof ffmc === 'number' && typeof dmc === 'number' ? (
                           <>
                             Berdasarkan eksekusi langsung 100 pohon keputusan pada <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">model_hazard.h</code> dengan vektor input <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">[{temp.toFixed(1)}°C, {rh.toFixed(0)}%, {wind.toFixed(1)} km/h, {rain.toFixed(1)} mm, FFMC {ffmc.toFixed(1)}, DMC {dmc.toFixed(1)}]</code>, probabilitas kelas adalah <strong>High {hazardResult.highProbability.toFixed(1)}%</strong>, <strong>Moderate {hazardResult.moderateProbability.toFixed(1)}%</strong>, dan <strong>Low {hazardResult.lowProbability.toFixed(1)}%</strong>.
                           </>
+                        ) : isLiveTelemetry && !isTelemetryStale ? (
+                          <>
+                            Stream sensor onboard ESP32 aktif via EMQX WSS (:8084): kondisi <strong>{envCondition || 'NORMAL'}</strong>{commandLabel ? ` (${commandLabel})` : ''}. Sensor FWI angin/hujan tidak terpasang pada unit lapangan ini sehingga <code className="text-[#F1D2A1] font-mono px-1 py-0.5 rounded bg-[#5E682B]/60 border border-[#869440]/60">model_hazard.h</code> dalam mode standby.
+                          </>
                         ) : (
-                          'Evaluasi live model_hazard.h dan model_botanical.h menunggu aliran data telemetri valid dari gateway. Hasil prediksi tidak ditampilkan saat disconnected atau stale.'
+                          'Evaluasi live menunggu aliran data telemetri valid dari EMQX WSS (:8084) atau Gateway. Hasil prediksi tidak ditampilkan saat disconnected atau stale.'
                         )}
                       </p>
 
@@ -3249,7 +3313,7 @@ export const App: React.FC = () => {
                       <div className="grid grid-cols-5 gap-1 text-center font-mono text-[10px]">
                         {[0, 1, 2, 3, 4].map((ch) => {
                           const val = isLiveTelemetry && !isTelemetryStale && flameChannels ? flameChannels[ch] : undefined;
-                          const isFire = val === 0;
+                          const isFire = typeof val === 'number' && val > 0;
                           return (
                             <div
                               key={ch}
@@ -3274,7 +3338,9 @@ export const App: React.FC = () => {
                         <span className="text-[#50645F] font-semibold">VL53L0X ToF Jarak:</span>
                         <span className="font-bold font-tabular text-[#263A35]">
                           {isLiveTelemetry && !isTelemetryStale && typeof distanceMm === 'number'
-                            ? `${distanceMm} mm`
+                            ? distanceMm >= 9000
+                              ? 'Belum Terdeteksi'
+                              : `${distanceMm} mm`
                             : 'Unavailable'}
                         </span>
                       </div>

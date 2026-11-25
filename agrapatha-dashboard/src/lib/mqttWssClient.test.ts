@@ -6,7 +6,9 @@ import {
   buildMqttSubscribePacket,
   encodeRemainingLength,
   parseMqttPacket,
+  parseMqttPackets,
 } from './mqttWssClient.ts';
+import { parseGatewayTelemetry } from './gatewayService.ts';
 
 describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
   test('encodes single-byte and multi-byte remaining length per MQTT 3.1.1 spec', () => {
@@ -33,6 +35,51 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
     assert.ok(parsed && parsed.type === 'PUBLISH');
     assert.equal(parsed.publish.topic, 'agrapatha/commands');
     assert.equal(parsed.publish.payload, payload);
+  });
+
+  test('decodes multiple coalesced MQTT frames in a single WebSocket binary buffer', () => {
+    const suback = new Uint8Array([0x90, 0x03, 0x00, 0x01, 0x00]);
+    const livePayload = JSON.stringify({
+      temperature: 28.5,
+      humidity: 64.2,
+      soil_moisture: 42.1,
+      soil_raw: 2450,
+      mq135_raw: 1120,
+      flame_detected: 0,
+      flame_ch: [0, 0, 0, 0, 0],
+      distance_mm: 240,
+      zone: 2,
+      pump_status: false,
+      pump_lockout: false,
+      ventilation_active: false,
+      gas_alarm_active: false,
+      servo_angles: [90, 45, 45, 90],
+      system_state: 'SCANNING_ZONES',
+      env_condition: 'NORMAL',
+      action_command: 'CMD_IDLE',
+      command_label: 'MONITORING',
+      command_payload: { cmd: 'NONE' },
+    });
+    const pub = buildMqttPublishPacket('agrapatha/telemetry', livePayload);
+    const combined = new Uint8Array(suback.length + pub.length);
+    combined.set(suback, 0);
+    combined.set(pub, suback.length);
+
+    const frames = parseMqttPackets(combined);
+    assert.equal(frames.length, 2);
+    assert.equal(frames[0].type, 'SUBACK');
+    assert.equal(frames[1].type, 'PUBLISH');
+    if (frames[1].type === 'PUBLISH') {
+      const normalized = parseGatewayTelemetry({
+        ...(JSON.parse(frames[1].publish.payload) as Record<string, unknown>),
+        freshness: 'FRESH',
+        timestamp: Date.now(),
+      });
+      assert.ok(normalized);
+      assert.equal(normalized.temp, 28.5);
+      assert.deepEqual(normalized.flameChannels, [0, 0, 0, 0, 0]);
+      assert.equal(normalized.systemState, 'SCANNING_ZONES');
+    }
   });
 
   test('builds valid SUBSCRIBE packet and parses CONNACK/SUBACK/PINGRESP', () => {

@@ -151,6 +151,33 @@ export function getGatewayConfig(): IotGatewayConfig {
   return getIotConfig().gateway;
 }
 
+export interface EmqxWssConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  telemetryTopics: string[];
+}
+
+/**
+ * Returns Direct Browser MQTT-over-WSS (Port 8084) configuration for serverless
+ * deployments (e.g., Vercel) where no local Node.js SSE gateway is running.
+ * Auto-connecting is strictly read-only until the operator explicitly arms actuators.
+ */
+export function getEmqxWssConfig(): EmqxWssConfig {
+  const env = (typeof import.meta !== 'undefined' && import.meta.env)
+    ? (import.meta.env as Record<string, string | undefined>)
+    : {};
+
+  return {
+    host: (env.VITE_MQTT_HOST || 'q2277711.ala.asia-southeast1.emqxsl.com').trim(),
+    port: Number(env.VITE_MQTT_WS_PORT) || 8084,
+    username: (env.VITE_MQTT_USERNAME || 'agrapatha').trim(),
+    password: env.VITE_MQTT_PASSWORD || 'agrapatha123',
+    telemetryTopics: ['agrapatha/telemetry', 'grenvis/sensor/data'],
+  };
+}
+
 /**
  * Resets runtime configuration back to factory default constants.
  */

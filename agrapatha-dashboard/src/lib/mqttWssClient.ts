@@ -108,15 +108,18 @@ export type DecodedMqttFrame =
   | { type: 'PINGRESP' }
   | { type: 'OTHER'; packetType: number };
 
-export function parseMqttPacket(buf: Uint8Array): DecodedMqttFrame | null {
-  if (buf.length < 2) return null;
-  const headerByte = buf[0];
+export function parseMqttPacketWithLength(
+  buf: Uint8Array,
+  startOffset = 0
+): { frame: DecodedMqttFrame; nextOffset: number } | null {
+  if (buf.length - startOffset < 2) return null;
+  const headerByte = buf[startOffset];
   const packetType = (headerByte >> 4) & 0x0f;
 
   // Decode remaining length
   let multiplier = 1;
   let value = 0;
-  let idx = 1;
+  let idx = startOffset + 1;
   let encodedByte = 0;
   do {
     if (idx >= buf.length) return null;
@@ -126,31 +129,46 @@ export function parseMqttPacket(buf: Uint8Array): DecodedMqttFrame | null {
     if (multiplier > 128 * 128 * 128 * 128) return null;
   } while ((encodedByte & 128) !== 0);
 
-  if (buf.length < idx + value) return null;
+  const nextOffset = idx + value;
+  if (buf.length < nextOffset) return null;
 
   if (packetType === 2 && value >= 2) {
-    // CONNACK
-    return { type: 'CONNACK', returnCode: buf[idx + 1] };
+    return { frame: { type: 'CONNACK', returnCode: buf[idx + 1] }, nextOffset };
   }
   if (packetType === 3) {
-    // PUBLISH
     const qos = (headerByte >> 1) & 0x03;
-    if (idx + 2 > buf.length) return null;
+    if (idx + 2 > nextOffset) return null;
     const topicLen = (buf[idx] << 8) | buf[idx + 1];
     idx += 2;
-    if (idx + topicLen > buf.length) return null;
+    if (idx + topicLen > nextOffset) return null;
     const topic = textDecoder.decode(buf.subarray(idx, idx + topicLen));
     idx += topicLen;
     if (qos > 0) {
+      if (idx + 2 > nextOffset) return null;
       idx += 2; // Skip Packet Identifier
     }
-    const payloadEnd = Math.min(buf.length, idx + (value - (2 + topicLen + (qos > 0 ? 2 : 0))));
-    const payload = textDecoder.decode(buf.subarray(idx, payloadEnd));
-    return { type: 'PUBLISH', publish: { topic, payload } };
+    const payload = textDecoder.decode(buf.subarray(idx, nextOffset));
+    return { frame: { type: 'PUBLISH', publish: { topic, payload } }, nextOffset };
   }
-  if (packetType === 9) return { type: 'SUBACK' };
-  if (packetType === 13) return { type: 'PINGRESP' };
-  return { type: 'OTHER', packetType };
+  if (packetType === 9) return { frame: { type: 'SUBACK' }, nextOffset };
+  if (packetType === 13) return { frame: { type: 'PINGRESP' }, nextOffset };
+  return { frame: { type: 'OTHER', packetType }, nextOffset };
+}
+
+export function parseMqttPackets(buf: Uint8Array): DecodedMqttFrame[] {
+  const frames: DecodedMqttFrame[] = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const res = parseMqttPacketWithLength(buf, offset);
+    if (!res || res.nextOffset <= offset) break;
+    frames.push(res.frame);
+    offset = res.nextOffset;
+  }
+  return frames;
+}
+
+export function parseMqttPacket(buf: Uint8Array): DecodedMqttFrame | null {
+  return parseMqttPacketWithLength(buf, 0)?.frame ?? null;
 }
 
 export interface MqttWssOptions {
@@ -159,6 +177,7 @@ export interface MqttWssOptions {
   username: string;
   password: string;
   telemetryTopic?: string;
+  telemetryTopics?: string[];
   onConnect?: () => void;
   onMessage?: (topic: string, payload: string) => void;
   onError?: (err: string) => void;
@@ -200,33 +219,39 @@ export class MqttWssClient {
 
       ws.onmessage = (evt: MessageEvent) => {
         if (!(evt.data instanceof ArrayBuffer)) return;
-        const frame = parseMqttPacket(new Uint8Array(evt.data));
-        if (!frame) return;
-
-        if (frame.type === 'CONNACK') {
-          if (frame.returnCode === 0) {
-            this.isConnected = true;
-            const topic = this.opts.telemetryTopic || 'agrapatha/telemetry';
-            ws.send(toArrayBuffer(buildMqttSubscribePacket(this.packetCounter++, topic)));
-            this.pingTimer = setInterval(() => {
-              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(toArrayBuffer(new Uint8Array([0xc0, 0x00]))); // PINGREQ
+        const frames = parseMqttPackets(new Uint8Array(evt.data));
+        for (const frame of frames) {
+          if (frame.type === 'CONNACK') {
+            if (frame.returnCode === 0) {
+              this.isConnected = true;
+              const topics =
+                this.opts.telemetryTopics && this.opts.telemetryTopics.length > 0
+                  ? this.opts.telemetryTopics
+                  : [this.opts.telemetryTopic || 'agrapatha/telemetry'];
+              for (const topic of topics) {
+                ws.send(toArrayBuffer(buildMqttSubscribePacket(this.packetCounter++, topic)));
               }
-            }, 30000);
-            this.opts.onConnect?.();
-          } else {
-            const reasons: Record<number, string> = {
-              1: 'Protokol tidak didukung',
-              2: 'Client ID ditolak',
-              3: 'Broker tidak tersedia',
-              4: 'Username atau Password salah',
-              5: 'Tidak diotorisasi (Not Authorized)',
-            };
-            this.opts.onError?.(`EMQX Auth Gagal (rc=${frame.returnCode}): ${reasons[frame.returnCode] || 'Unknown'}`);
-            this.disconnect();
+              this.pingTimer = setInterval(() => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                  this.ws.send(toArrayBuffer(new Uint8Array([0xc0, 0x00]))); // PINGREQ
+                }
+              }, 30000);
+              this.opts.onConnect?.();
+            } else {
+              const reasons: Record<number, string> = {
+                1: 'Protokol tidak didukung',
+                2: 'Client ID ditolak',
+                3: 'Broker tidak tersedia',
+                4: 'Username atau Password salah',
+                5: 'Tidak diotorisasi (Not Authorized)',
+              };
+              this.opts.onError?.(`EMQX Auth Gagal (rc=${frame.returnCode}): ${reasons[frame.returnCode] || 'Unknown'}`);
+              this.disconnect();
+              return;
+            }
+          } else if (frame.type === 'PUBLISH') {
+            this.opts.onMessage?.(frame.publish.topic, frame.publish.payload);
           }
-        } else if (frame.type === 'PUBLISH') {
-          this.opts.onMessage?.(frame.publish.topic, frame.publish.payload);
         }
       };
 
