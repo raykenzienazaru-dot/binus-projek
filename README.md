@@ -1,4 +1,6 @@
-# AGRAPATHA — Autonomous Forest Fire & Botanical Observation System
+# binus-projek
+
+## AGRAPATHA — Autonomous Forest Fire & Botanical Observation System
 
 AGRAPATHA is an intelligent environmental monitoring and early warning system combining Edge-AI C kernels (`model_hazard.h`, `grenvis_sensor_model.h`), Canadian Forest Fire Weather Index (FWI) telemetry, macro-regional BMKG forecast integration, and an optical computer vision subsystem with manual browser fallback.
 
