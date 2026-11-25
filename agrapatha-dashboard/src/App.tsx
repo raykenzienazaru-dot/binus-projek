@@ -10,21 +10,32 @@ import { FloraHistoryCanvas, type TelemetryHistoryPoint } from './components/Flo
 import { Model1HazardView } from './components/Model1HazardView';
 import { Model2BotanicalView } from './components/Model2BotanicalView';
 import {
-  Camera,
-  Upload,
-  RotateCcw,
+  Activity,
   AlertCircle,
+  AlertOctagon,
+  ArrowLeft,
+  ArrowRight,
+  Camera,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Crosshair,
+  Droplet,
   Flame,
+  Info,
+  Layers,
+  LayoutGrid,
   Leaf,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Square,
+  Upload,
   Video,
   VideoOff,
-  Sparkles,
-  Info,
-  LayoutGrid,
-  Layers,
-  ChevronRight,
-  ChevronDown,
+  Wind,
+  Zap,
 } from 'lucide-react';
 import {
   NavigationMenu,
@@ -38,8 +49,6 @@ import type {
   CameraStatus,
   CaptureSource,
   InferenceStatus,
-  LeafDiseasePredictionData,
-  VisionDomain,
   WildfirePredictionData,
 } from './types/vision';
 import {
@@ -49,8 +58,9 @@ import {
   validateImageFile,
 } from './lib/cameraCapture';
 import { predictWildfireImage } from './lib/wildfireService';
-import { isLeafDiseaseApiConfigured, predictLeafDiseaseImage } from './lib/leafDiseaseService';
+import { MqttWssClient } from './lib/mqttWssClient';
 import {
+  parseGatewayTelemetry,
   subscribeGatewayTelemetry,
   fetchLatestCameraFrame,
   checkGatewayHealth,
@@ -139,8 +149,7 @@ export const App: React.FC = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [lastCaptureTime, setLastCaptureTime] = useState<string | null>(null);
 
-  // Phase 2B: Real Camera, Upload & Dual-Domain Inference State
-  const [visionDomain, setVisionDomain] = useState<VisionDomain>('wildfire');
+  // Optical Fire & Smoke Vision State (MobileNetV2 · be-binus Railway)
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
   const [captureSource, setCaptureSource] = useState<CaptureSource>('none');
   const [capturedBlob, setCapturedBlob] = useState<Blob | File | null>(null);
@@ -148,9 +157,6 @@ export const App: React.FC = () => {
   const [inferenceStatus, setInferenceStatus] = useState<InferenceStatus>('idle');
   const [inferenceError, setInferenceError] = useState<string | null>(null);
   const [wildfireResult, setWildfireResult] = useState<WildfirePredictionData | null>(null);
-  const [leafResult, setLeafResult] = useState<LeafDiseasePredictionData | null>(null);
-  const [leafPrediction, setLeafPrediction] = useState<string | null>(null);
-  const [leafProbs, setLeafProbs] = useState({ healthy: 0, powdery: 0, rust: 0 });
   const [isVideoReady, setIsVideoReady] = useState<boolean>(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -159,14 +165,42 @@ export const App: React.FC = () => {
   const activeInferenceAbortRef = useRef<AbortController | null>(null);
 
 
-  // Actuator / Rail L298N state
+  // Actuator / Rail L298N & 4-DoF Robot Arm State (Zero-Dummy Live Values)
   const [movementStatus, setMovementStatus] = useState<
     'idle' | 'left_command_sent' | 'right_command_sent' | 'stop_command_sent' | 'capture_command_sent'
   >('idle');
-  const [lastCommand, setLastCommand] = useState<string | null>('C');
+  const [lastCommand, setLastCommand] = useState<string | null>(null);
   const [limitLeft, setLimitLeft] = useState<boolean>(false);
   const [limitRight, setLimitRight] = useState<boolean>(false);
-  const railPositionMm = limitLeft ? 0 : limitRight ? 1200 : null;
+  const [distanceMm, setDistanceMm] = useState<number | null>(null);
+  const [zone, setZone] = useState<number | null>(null);
+  const [pumpStatus, setPumpStatus] = useState<boolean | null>(null);
+  const [pumpLockout, setPumpLockout] = useState<boolean | null>(null);
+  const [ventilationActive, setVentilationActive] = useState<boolean | null>(null);
+  const [gasAlarmActive, setGasAlarmActive] = useState<boolean | null>(null);
+  const [flameChannels, setFlameChannels] = useState<number[] | null>(null);
+  const [servoAngles, setServoAngles] = useState<number[] | null>(null);
+  const [systemState, setSystemState] = useState<string | null>(null);
+  const [envCondition, setEnvCondition] = useState<string | null>(null);
+  const [actionCommand, setActionCommand] = useState<string | null>(null);
+  const [commandLabel, setCommandLabel] = useState<string | null>(null);
+  const [commandPayload, setCommandPayload] = useState<unknown>(null);
+  const railPositionMm = limitLeft ? 0 : limitRight ? 1200 : zone === 2 ? 600 : zone === 1 ? 150 : zone === 3 ? 1050 : null;
+
+  // Direct EMQX Cloud WSS (Port 8084) State for Two-Way Robot Command Dispatch
+  const [mqttHostInput, setMqttHostInput] = useState<string>('q2277711.ala.asia-southeast1.emqxsl.com');
+  const [mqttUserInput, setMqttUserInput] = useState<string>(() => {
+    try {
+      return (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('agrapatha_mqtt_user')) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [mqttPassInput, setMqttPassInput] = useState<string>('');
+  const [mqttWssStatus, setMqttWssStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [mqttWssError, setMqttWssError] = useState<string | null>(null);
+  const [actuatorArmed, setActuatorArmed] = useState<boolean>(false);
+  const mqttWssRef = useRef<MqttWssClient | null>(null);
 
   // Watering / Suppression log state initialized empty (live session logs only)
   const [wateringEvents, setWateringEvents] = useState<WateringLogEvent[]>([]);
@@ -279,180 +313,287 @@ export const App: React.FC = () => {
     fetchGatewayFrameRef.current = handleFetchGatewayFrame;
   });
 
+  const resetTelemetryState = useCallback(() => {
+    setIsLiveTelemetry(false);
+    setIsTelemetryStale(false);
+    setTemp(null);
+    setRh(null);
+    setWind(null);
+    setRain(null);
+    setFfmc(null);
+    setDmc(null);
+    setDc(null);
+    setIsi(null);
+    setSoilMoisture(null);
+    setSoilRaw(null);
+    setGasPpm(null);
+    setMq135Raw(null);
+    setFlameDetected(null);
+    setFlameRaw(null);
+    setEdgePrediction(null);
+    setEdgeConfidence(null);
+    setDistanceMm(null);
+    setZone(null);
+    setPumpStatus(null);
+    setPumpLockout(null);
+    setVentilationActive(null);
+    setGasAlarmActive(null);
+    setFlameChannels(null);
+    setServoAngles(null);
+    setSystemState(null);
+    setEnvCondition(null);
+    setActionCommand(null);
+    setCommandLabel(null);
+    setCommandPayload(null);
+  }, []);
+
+  const applyTelemetryPayload = useCallback((payload: GatewayTelemetryPayload) => {
+    const now = Date.now();
+    lastTelemetryTimestampRef.current = now;
+    setLastLiveTelemetryTime(new Date(now));
+    setIsLiveTelemetry(true);
+    setIsTelemetryStale(payload.freshness === 'STALE');
+
+    const newTemp = typeof payload.temp === 'number' && Number.isFinite(payload.temp) ? Number(payload.temp.toFixed(1)) : null;
+    const newRh = typeof payload.rh === 'number' && Number.isFinite(payload.rh) ? Number(payload.rh.toFixed(1)) : null;
+    const newSoil = typeof payload.soilMoisture === 'number' && Number.isFinite(payload.soilMoisture) ? Number(payload.soilMoisture.toFixed(1)) : null;
+    const newRain = typeof payload.rain === 'number' && Number.isFinite(payload.rain) ? Number(payload.rain.toFixed(2)) : null;
+    const newWind = typeof payload.wind === 'number' && Number.isFinite(payload.wind) ? Number(payload.wind.toFixed(1)) : null;
+
+    if (newTemp !== null) setTemp(newTemp);
+    if (newRh !== null) setRh(newRh);
+    if (newSoil !== null) setSoilMoisture(newSoil);
+    if (typeof payload.soilRaw === 'number' && Number.isFinite(payload.soilRaw)) {
+      setSoilRaw(payload.soilRaw);
+    }
+    setRain(newRain);
+    setWind(newWind);
+    if (typeof payload.gasPpm === 'number' && Number.isFinite(payload.gasPpm)) {
+      setGasPpm(Math.round(payload.gasPpm));
+    } else {
+      setGasPpm(null);
+    }
+    if (typeof payload.mq135Raw === 'number' && Number.isFinite(payload.mq135Raw)) {
+      setMq135Raw(Math.round(payload.mq135Raw));
+    } else {
+      setMq135Raw(null);
+    }
+    if (typeof payload.flameDetected === 'number' && Number.isFinite(payload.flameDetected)) {
+      setFlameDetected(payload.flameDetected);
+    } else {
+      setFlameDetected(null);
+    }
+    if (typeof payload.flameRaw === 'number' && Number.isFinite(payload.flameRaw)) {
+      setFlameRaw(Math.round(payload.flameRaw));
+    } else {
+      setFlameRaw(null);
+    }
+    if (typeof payload.motorDriver === 'string' && payload.motorDriver.trim() !== '') {
+      setMotorDriverInfo(payload.motorDriver.trim());
+    }
+    if (typeof payload.uptimeSeconds === 'number' && Number.isFinite(payload.uptimeSeconds)) {
+      setGatewayUptimeSeconds(payload.uptimeSeconds);
+    }
+    if (typeof payload.limitLeft === 'boolean') setLimitLeft(payload.limitLeft);
+    if (typeof payload.limitRight === 'boolean') setLimitRight(payload.limitRight);
+
+    if (typeof payload.motorState === 'string') {
+      if (payload.motorState === 'LEFT') setMovementStatus('left_command_sent');
+      else if (payload.motorState === 'RIGHT') setMovementStatus('right_command_sent');
+      else if (payload.motorState === 'STOPPED') setMovementStatus('stop_command_sent');
+    }
+
+    // New 4-DoF Robot Arm, VL53L0X ToF, 5-ch Flame & 4-Condition fields
+    if (typeof payload.distanceMm === 'number' && Number.isFinite(payload.distanceMm)) setDistanceMm(payload.distanceMm);
+    if (typeof payload.zone === 'number' && Number.isFinite(payload.zone)) setZone(payload.zone);
+    if (typeof payload.pumpStatus === 'boolean') setPumpStatus(payload.pumpStatus);
+    if (typeof payload.pumpLockout === 'boolean') setPumpLockout(payload.pumpLockout);
+    if (typeof payload.ventilationActive === 'boolean') setVentilationActive(payload.ventilationActive);
+    if (typeof payload.gasAlarmActive === 'boolean') setGasAlarmActive(payload.gasAlarmActive);
+    if (Array.isArray(payload.flameChannels)) setFlameChannels(payload.flameChannels);
+    if (Array.isArray(payload.servoAngles)) setServoAngles(payload.servoAngles);
+    if (typeof payload.systemState === 'string') setSystemState(payload.systemState);
+    if (typeof payload.envCondition === 'string') setEnvCondition(payload.envCondition);
+    if (typeof payload.actionCommand === 'string') setActionCommand(payload.actionCommand);
+    if (typeof payload.commandLabel === 'string') setCommandLabel(payload.commandLabel);
+    if (payload.commandPayload !== undefined) setCommandPayload(payload.commandPayload);
+
+    // Dynamically compute FWI components when full meteorological inputs arrive
+    const currentSensors = sensorValuesRef.current;
+    const currentTemp = newTemp !== null ? newTemp : currentSensors.temp;
+    const currentRh = newRh !== null ? newRh : currentSensors.rh;
+    const currentRain = newRain;
+    const currentSoil = newSoil !== null ? newSoil : currentSensors.soilMoisture;
+
+    if (currentTemp !== null && currentRh !== null && newWind !== null && currentRain !== null) {
+      const fwi = computeFwiComponents({
+        temp: currentTemp,
+        rh: currentRh,
+        wind: newWind,
+        rain: currentRain,
+        soilMoisture: currentSoil !== null ? currentSoil : undefined,
+      });
+      setFfmc(Number(fwi.ffmc.toFixed(1)));
+      setDmc(Number(fwi.dmc.toFixed(1)));
+      setDc(Number(fwi.dc.toFixed(1)));
+      setIsi(Number(fwi.isi.toFixed(1)));
+
+      const evalRes = evaluateModelHazard({
+        temp: currentTemp,
+        rh: currentRh,
+        wind: newWind,
+        rain: currentRain,
+        ffmc: fwi.ffmc,
+        dmc: fwi.dmc,
+        dc: fwi.dc,
+        isi: fwi.isi,
+      });
+      if (evalRes && currentSoil !== null) {
+        const genuinePoint: TelemetryHistoryPoint = {
+          timestamp: new Date().toISOString(),
+          temperature: currentTemp,
+          humidity: currentRh,
+          soil_moisture: currentSoil,
+          wind: newWind,
+          rain: currentRain,
+          ffmc: Number(fwi.ffmc.toFixed(1)),
+          dmc: Number(fwi.dmc.toFixed(1)),
+          dc: Number(fwi.dc.toFixed(1)),
+          isi: Number(fwi.isi.toFixed(1)),
+          sensor_risk: evalRes.riskLevel,
+          sensor_confidence: evalRes.confidence,
+          vision_prediction: typeof payload.visionPrediction === 'string' ? payload.visionPrediction : 'No Detection',
+        };
+        setHistory((prev) => [...prev.slice(-49), genuinePoint]);
+      }
+    } else {
+      setFfmc(null);
+      setDmc(null);
+      setDc(null);
+      setIsi(null);
+    }
+
+    if (payload.visionPrediction) {
+      setEdgePrediction(payload.visionPrediction);
+      setEdgeConfidence(payload.visionConfidence);
+    }
+
+    if (payload.imageReady === true) {
+      fetchGatewayFrameRef.current(false);
+    }
+  }, []);
+
   // Subscribe to read-only Backend Gateway Server-Sent Events (/api/telemetry/stream)
-  // Stable lifecycle: does NOT reconnect on sensor state updates (F-01 fix)
   useEffect(() => {
     const unsubscribe = subscribeGatewayTelemetry({
       onTelemetry: (payload: GatewayTelemetryPayload) => {
-        const now = Date.now();
-        lastTelemetryTimestampRef.current = now;
-        setLastLiveTelemetryTime(new Date(now));
-        setIsLiveTelemetry(true);
-        setIsTelemetryStale(payload.freshness === 'STALE');
-
-        const newTemp = typeof payload.temp === 'number' && Number.isFinite(payload.temp) ? Number(payload.temp.toFixed(1)) : null;
-        const newRh = typeof payload.rh === 'number' && Number.isFinite(payload.rh) ? Number(payload.rh.toFixed(1)) : null;
-        const newSoil = typeof payload.soilMoisture === 'number' && Number.isFinite(payload.soilMoisture) ? Number(payload.soilMoisture.toFixed(1)) : null;
-        const newRain = typeof payload.rain === 'number' && Number.isFinite(payload.rain) ? Number(payload.rain.toFixed(2)) : null;
-        const newWind = typeof payload.wind === 'number' && Number.isFinite(payload.wind) ? Number(payload.wind.toFixed(1)) : null;
-
-        if (newTemp !== null) setTemp(newTemp);
-        if (newRh !== null) setRh(newRh);
-        if (newSoil !== null) setSoilMoisture(newSoil);
-        if (typeof payload.soilRaw === 'number' && Number.isFinite(payload.soilRaw)) {
-          setSoilRaw(payload.soilRaw);
-        }
-        setRain(newRain);
-        setWind(newWind);
-        if (typeof payload.gasPpm === 'number' && Number.isFinite(payload.gasPpm)) {
-          setGasPpm(Math.round(payload.gasPpm));
-        } else {
-          setGasPpm(null);
-        }
-        if (typeof payload.mq135Raw === 'number' && Number.isFinite(payload.mq135Raw)) {
-          setMq135Raw(Math.round(payload.mq135Raw));
-        } else {
-          setMq135Raw(null);
-        }
-        if (typeof payload.flameDetected === 'number' && Number.isFinite(payload.flameDetected)) {
-          setFlameDetected(payload.flameDetected);
-        } else {
-          setFlameDetected(null);
-        }
-        if (typeof payload.flameRaw === 'number' && Number.isFinite(payload.flameRaw)) {
-          setFlameRaw(Math.round(payload.flameRaw));
-        } else {
-          setFlameRaw(null);
-        }
-        if (typeof payload.motorDriver === 'string' && payload.motorDriver.trim() !== '') {
-          setMotorDriverInfo(payload.motorDriver.trim());
-        }
-        if (typeof payload.uptimeSeconds === 'number' && Number.isFinite(payload.uptimeSeconds)) {
-          setGatewayUptimeSeconds(payload.uptimeSeconds);
-        }
-
-        if (typeof payload.limitLeft === 'boolean') setLimitLeft(payload.limitLeft);
-        if (typeof payload.limitRight === 'boolean') setLimitRight(payload.limitRight);
-
-        if (typeof payload.motorState === 'string') {
-          if (payload.motorState === 'LEFT') setMovementStatus('left_command_sent');
-          else if (payload.motorState === 'RIGHT') setMovementStatus('right_command_sent');
-          else if (payload.motorState === 'STOPPED') setMovementStatus('stop_command_sent');
-        }
-
-        // Dynamically compute FWI components using latest values without stale closures or reconnecting SSE
-        const currentSensors = sensorValuesRef.current;
-        const currentTemp = newTemp !== null ? newTemp : currentSensors.temp;
-        const currentRh = newRh !== null ? newRh : currentSensors.rh;
-        const currentRain = newRain;
-        const currentSoil = newSoil !== null ? newSoil : currentSensors.soilMoisture;
-
-        if (currentTemp !== null && currentRh !== null && newWind !== null && currentRain !== null) {
-          const fwi = computeFwiComponents({
-            temp: currentTemp,
-            rh: currentRh,
-            wind: newWind,
-            rain: currentRain,
-            soilMoisture: currentSoil !== null ? currentSoil : undefined,
-          });
-          setFfmc(Number(fwi.ffmc.toFixed(1)));
-          setDmc(Number(fwi.dmc.toFixed(1)));
-          setDc(Number(fwi.dc.toFixed(1)));
-          setIsi(Number(fwi.isi.toFixed(1)));
-
-          // Record genuine incoming telemetry point to history
-          const evalRes = evaluateModelHazard({
-            temp: currentTemp,
-            rh: currentRh,
-            wind: newWind,
-            rain: currentRain,
-            ffmc: fwi.ffmc,
-            dmc: fwi.dmc,
-            dc: fwi.dc,
-            isi: fwi.isi,
-          });
-          if (evalRes && currentSoil !== null) {
-            const genuinePoint: TelemetryHistoryPoint = {
-              timestamp: new Date().toISOString(),
-              temperature: currentTemp,
-              humidity: currentRh,
-              soil_moisture: currentSoil,
-              wind: newWind,
-              rain: currentRain,
-              ffmc: Number(fwi.ffmc.toFixed(1)),
-              dmc: Number(fwi.dmc.toFixed(1)),
-              dc: Number(fwi.dc.toFixed(1)),
-              isi: Number(fwi.isi.toFixed(1)),
-              sensor_risk: evalRes.riskLevel,
-              sensor_confidence: evalRes.confidence,
-              vision_prediction: typeof payload.visionPrediction === 'string' ? payload.visionPrediction : 'No Detection',
-            };
-            setHistory((prev) => [...prev.slice(-49), genuinePoint]);
-          }
-        } else {
-          setFfmc(null);
-          setDmc(null);
-          setDc(null);
-          setIsi(null);
-        }
-
-        // Record genuine edge AI predictions without overwriting cloud vision probability distributions
-        if (payload.visionPrediction) {
-          setEdgePrediction(payload.visionPrediction);
-          setEdgeConfidence(payload.visionConfidence);
-        }
-
-        // Trigger camera frame fetch when backend signals a new image frame is ready
-        if (payload.imageReady === true) {
-          fetchGatewayFrameRef.current(false);
-        }
+        applyTelemetryPayload(payload);
       },
       onStatusChange: (status) => {
         setGatewayStatus(status);
-        if (status === 'error' || status === 'closed') {
-          setIsLiveTelemetry(false);
-          setIsTelemetryStale(false);
-          setTemp(null);
-          setRh(null);
-          setWind(null);
-          setRain(null);
-          setFfmc(null);
-          setDmc(null);
-          setDc(null);
-          setIsi(null);
-          setSoilMoisture(null);
-          setSoilRaw(null);
-          setGasPpm(null);
-          setFlameDetected(null);
-          setEdgePrediction(null);
-          setEdgeConfidence(null);
+        if ((status === 'error' || status === 'closed') && mqttWssStatus !== 'connected') {
+          resetTelemetryState();
         }
       },
       onError: () => {
         setGatewayStatus('error');
-        setIsLiveTelemetry(false);
-        setIsTelemetryStale(false);
-        setTemp(null);
-        setRh(null);
-        setWind(null);
-        setRain(null);
-        setFfmc(null);
-        setDmc(null);
-        setDc(null);
-        setIsi(null);
-        setSoilMoisture(null);
-        setSoilRaw(null);
-        setGasPpm(null);
-        setFlameDetected(null);
-        setEdgePrediction(null);
-        setEdgeConfidence(null);
+        if (mqttWssStatus !== 'connected') {
+          resetTelemetryState();
+        }
       },
     });
 
     return () => {
       unsubscribe();
     };
+  }, [applyTelemetryPayload, resetTelemetryState, mqttWssStatus]);
+
+  // Cleanup EMQX WSS on unmount
+  useEffect(() => {
+    return () => {
+      mqttWssRef.current?.disconnect();
+    };
   }, []);
+
+  const handleConnectMqttWss = useCallback((e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const host = mqttHostInput.trim();
+    const username = mqttUserInput.trim();
+    const password = mqttPassInput;
+
+    if (!host || !username || !password) {
+      setMqttWssError('Masukkan Host EMQX, Username, dan Password terlebih dahulu.');
+      showToast('Kredensial MQTT WSS belum lengkap.');
+      return;
+    }
+
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('agrapatha_mqtt_user', username);
+      }
+    } catch {
+      // ignore
+    }
+
+    setMqttWssStatus('connecting');
+    setMqttWssError(null);
+    mqttWssRef.current?.disconnect();
+
+    const client = new MqttWssClient({
+      host,
+      port: 8084,
+      username,
+      password,
+      telemetryTopic: 'agrapatha/telemetry',
+      onConnect: () => {
+        setMqttWssStatus('connected');
+        setMqttWssError(null);
+        showToast(`Terhubung ke EMQX WSS (${host}:8084)`);
+      },
+      onMessage: (_topic, payloadStr) => {
+        try {
+          const parsedRaw = JSON.parse(payloadStr);
+          if (parsedRaw && typeof parsedRaw === 'object') {
+            const normalized = parseGatewayTelemetry({
+              ...(parsedRaw as Record<string, unknown>),
+              freshness: 'FRESH',
+              timestamp: Date.now(),
+            });
+            if (normalized) {
+              applyTelemetryPayload(normalized);
+            }
+          }
+        } catch {
+          // ignore malformed telemetry
+        }
+      },
+      onError: (errMsg) => {
+        setMqttWssStatus('error');
+        setMqttWssError(errMsg);
+        setActuatorArmed(false);
+        showToast(errMsg);
+      },
+      onClose: () => {
+        setMqttWssStatus('disconnected');
+        setActuatorArmed(false);
+      },
+    });
+
+    mqttWssRef.current = client;
+    client.connect();
+  }, [mqttHostInput, mqttUserInput, mqttPassInput, applyTelemetryPayload, showToast]);
+
+  const handleDisconnectMqttWss = useCallback(() => {
+    mqttWssRef.current?.disconnect();
+    mqttWssRef.current = null;
+    setMqttWssStatus('disconnected');
+    setActuatorArmed(false);
+    setMqttWssError(null);
+    if (gatewayStatus !== 'connected') {
+      resetTelemetryState();
+    }
+    showToast('Koneksi EMQX WSS diputus.');
+  }, [gatewayStatus, resetTelemetryState, showToast]);
 
   // Periodic Telemetry Freshness Watchdog (10s threshold) (F-02 fix)
   useEffect(() => {
@@ -736,23 +877,6 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Handle switching domain: clear domain-specific states without mixing results
-  const handleDomainChange = (newDomain: VisionDomain) => {
-    if (newDomain === visionDomain) return;
-    if (activeInferenceAbortRef.current) {
-      activeInferenceAbortRef.current.abort();
-      activeInferenceAbortRef.current = null;
-    }
-    setVisionDomain(newDomain);
-    setInferenceStatus('idle');
-    setInferenceError(null);
-    if (newDomain === 'leaf_disease') {
-      setLeafResult(null);
-      setLeafPrediction(null);
-      setLeafProbs({ healthy: 0, powdery: 0, rust: 0 });
-    }
-  };
-
   // Start live device camera stream
   const handleStartCamera = async () => {
     setInferenceError(null);
@@ -761,7 +885,6 @@ export const App: React.FC = () => {
     setCapturedBlob(null);
     setCaptureSource('none');
 
-    // Prevent duplicate streams or orphaned tracks
     if (streamRef.current) {
       stopMediaStream(streamRef.current);
       streamRef.current = null;
@@ -877,7 +1000,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Run real inference on capturedBlob
+  // Run real wildfire/smoke inference on capturedBlob via be-binus Railway API
   const handleAnalyzeImage = async () => {
     if (!capturedBlob || isCapturing) return;
 
@@ -888,68 +1011,79 @@ export const App: React.FC = () => {
     const abortController = new AbortController();
     activeInferenceAbortRef.current = abortController;
 
-    if (visionDomain === 'wildfire') {
-      const res = await predictWildfireImage(capturedBlob, abortController.signal);
-      setIsCapturing(false);
-      activeInferenceAbortRef.current = null;
+    const res = await predictWildfireImage(capturedBlob, abortController.signal);
+    setIsCapturing(false);
+    activeInferenceAbortRef.current = null;
 
-      if (res.success && res.data) {
-        setWildfireResult(res.data);
-        const labelMap: Record<string, 'Healthy Forest Canopy' | 'Smoke Plume Detected' | 'Active Surface Fire'> = {
-          'Non-Fire': 'Healthy Forest Canopy',
-          'Smoke': 'Smoke Plume Detected',
-          'Fire': 'Active Surface Fire',
-        };
-        const mappedLabel = labelMap[res.data.predicted_label] || 'Healthy Forest Canopy';
-        setVisionPrediction(mappedLabel);
-        setVisionProbs({
-          healthy: res.data.scores['Non-Fire'] * 100,
-          smoke: res.data.scores['Smoke'] * 100,
-          fire: res.data.scores['Fire'] * 100,
-        });
-        const ts = res.data.timestamp || new Date().toISOString();
-        setLastCaptureTime(ts);
-        appendSnapshotToHistory(temp, rh, soilMoisture, wind, rain, ffmc, dmc, dc, isi, mappedLabel);
-        setInferenceStatus('success');
-        showToast(`Inferensi Karhutla Sukses: ${res.data.predicted_label} (${res.data.confidence_percentage.toFixed(1)}%)`);
-      } else {
-        setInferenceStatus('error');
-        setInferenceError(res.error || 'Gagal memproses inferensi citra karhutla.');
-        showToast(res.error || 'Inferensi gagal.');
-      }
+    if (res.success && res.data) {
+      setWildfireResult(res.data);
+      const labelMap: Record<string, 'Healthy Forest Canopy' | 'Smoke Plume Detected' | 'Active Surface Fire'> = {
+        'Non-Fire': 'Healthy Forest Canopy',
+        'Smoke': 'Smoke Plume Detected',
+        'Fire': 'Active Surface Fire',
+      };
+      const mappedLabel = labelMap[res.data.predicted_label] || 'Healthy Forest Canopy';
+      setVisionPrediction(mappedLabel);
+      setVisionProbs({
+        healthy: res.data.scores['Non-Fire'] * 100,
+        smoke: res.data.scores['Smoke'] * 100,
+        fire: res.data.scores['Fire'] * 100,
+      });
+      const ts = res.data.timestamp || new Date().toISOString();
+      setLastCaptureTime(ts);
+      appendSnapshotToHistory(temp, rh, soilMoisture, wind, rain, ffmc, dmc, dc, isi, mappedLabel);
+      setInferenceStatus('success');
+      showToast(`Inferensi MobileNetV2 Sukses: ${res.data.predicted_label} (${res.data.confidence_percentage.toFixed(1)}%)`);
     } else {
-      // Leaf Disease domain (isolated from wildfire endpoint)
-      const res = await predictLeafDiseaseImage(capturedBlob, abortController.signal);
-      setIsCapturing(false);
-      activeInferenceAbortRef.current = null;
-
-      if (res.success && res.data) {
-        setLeafResult(res.data);
-        setLeafPrediction(res.data.predicted_label);
-        setLeafProbs({
-          healthy: (res.data.scores['Healthy'] || 0) * 100,
-          powdery: (res.data.scores['Powdery Mildew'] || 0) * 100,
-          rust: (res.data.scores['Leaf Rust'] || 0) * 100,
-        });
-        const ts = res.data.timestamp || new Date().toISOString();
-        setLastCaptureTime(ts);
-        setInferenceStatus('success');
-        showToast(`Diagnosa Daun Sukses: ${res.data.predicted_label}`);
-      } else {
-        setInferenceStatus('error');
-        setInferenceError(res.error || 'Layanan inferensi penyakit daun tidak tersedia.');
-        showToast(res.error || 'Layanan daun belum terhubung.');
-      }
+      setInferenceStatus('error');
+      setInferenceError(res.error || 'Gagal memproses inferensi citra ke be-binus-production.up.railway.app.');
+      showToast(res.error || 'Inferensi gagal.');
     }
   };
 
+  // Dispatch two-way executable robot commands to MQTT `agrapatha/commands` (Safety-Gated)
+  const dispatchRobotCommand = useCallback(
+    (cmdName: string, humanLabel?: string, params?: Record<string, unknown>) => {
+      const isEmergencyStop = cmdName === 'CMD_EMERGENCY_STOP';
+      if (mqttWssStatus !== 'connected' || !mqttWssRef.current) {
+        showToast(
+          `Gagal kirim ${cmdName}: Hubungkan EMQX WSS (Port 8084) di panel Kontrol Robot terlebih dahulu (Fail-Closed).`
+        );
+        return false;
+      }
+      if (!actuatorArmed && !isEmergencyStop) {
+        showToast(
+          `Interlock Safety Aktif: Aktifkan toggle "ARM AKTUATOR" untuk mengirim perintah ${cmdName}.`
+        );
+        return false;
+      }
 
-  // L298N Rail Carriage commands (OUT3 & OUT4) — Fail-Closed Safety Gate
+      const payloadJson = JSON.stringify(params ? { cmd: cmdName, params } : { cmd: cmdName });
+      const sent = mqttWssRef.current.publish('agrapatha/commands', payloadJson);
+      if (sent) {
+        setLastCommand(cmdName);
+        if (cmdName === 'CMD_SLIDER_LEFT' || cmdName === 'L') setMovementStatus('left_command_sent');
+        else if (cmdName === 'CMD_SLIDER_RIGHT' || cmdName === 'R') setMovementStatus('right_command_sent');
+        else if (cmdName === 'CMD_SLIDER_STOP' || cmdName === 'S' || isEmergencyStop) setMovementStatus('stop_command_sent');
+        else if (cmdName === 'CMD_TRIGGER_CAPTURE' || cmdName === 'C') setMovementStatus('capture_command_sent');
+        showToast(`Perintah Terkirim: ${humanLabel || cmdName}`);
+        return true;
+      }
+      showToast('Gagal mengirim payload ke broker EMQX.');
+      return false;
+    },
+    [mqttWssStatus, actuatorArmed, showToast]
+  );
+
+  // Legacy short-char wrapper mapped cleanly to Robot Arm & Slider command dispatcher
   const handleRailCommand = (cmd: 'L' | 'R' | 'S' | 'C') => {
-    setLastCommand(cmd);
-    showToast(
-      "Kontrol aktuator dinonaktifkan (Fail-Closed Gate). Dashboard beroperasi dalam mode Read-Only via Backend Gateway."
-    );
+    const cmdMap: Record<'L' | 'R' | 'S' | 'C', string> = {
+      L: 'CMD_SLIDER_LEFT',
+      R: 'CMD_SLIDER_RIGHT',
+      S: 'CMD_SLIDER_STOP',
+      C: 'CMD_TRIGGER_CAPTURE',
+    };
+    dispatchRobotCommand(cmdMap[cmd]);
   };
 
   // Record manual watering / suppression
@@ -1506,11 +1640,14 @@ export const App: React.FC = () => {
 
               {/* Connectivity status */}
               {(() => {
+                const effectiveGatewayStatus = mqttWssStatus === 'connected' ? 'connected' : gatewayStatus;
+                const effectiveBrokerConnected =
+                  mqttWssStatus === 'connected' || (gatewayHealth?.mqttConnected ?? false);
                 const deviceConn = getDeviceConnectivityStatus(
                   isLiveTelemetry,
                   isTelemetryStale,
-                  gatewayStatus,
-                  gatewayHealth?.mqttConnected ?? false
+                  effectiveGatewayStatus,
+                  effectiveBrokerConnected
                 );
                 return (
                   <div
@@ -1520,8 +1657,8 @@ export const App: React.FC = () => {
                           ? 'bg-[#5E682B] border-[#D97706]/70 text-[#D97706]'
                           : 'bg-[#5E682B] border-[#869440] text-white'
                       }`}
-                    title={`Status Gateway SSE (/api/telemetry/stream): ${gatewayStatus.toUpperCase()} · Broker EMQX: ${gatewayHealth ? (gatewayHealth.mqttConnected ? 'CONNECTED' : 'DISCONNECTED') : 'CHECKING'}${isTelemetryStale ? ' · TELEMETRI STALE' : ''}`}
-                    aria-label="Status Gateway Telemetri"
+                    title={`Gateway SSE: ${gatewayStatus.toUpperCase()} · Direct EMQX WSS (8084): ${mqttWssStatus.toUpperCase()} · Broker EMQX: ${effectiveBrokerConnected ? 'CONNECTED' : 'DISCONNECTED'}${isTelemetryStale ? ' · TELEMETRI STALE' : ''}`}
+                    aria-label="Status Gateway dan Broker Telemetri"
                   >
                     <span className={`w-2 h-2 rounded-full shrink-0 ${deviceConn.dotClass}`} />
                     <span className="font-bold font-display text-[11px] uppercase tracking-wider text-white">
@@ -1529,8 +1666,10 @@ export const App: React.FC = () => {
                     </span>
                     <span className="text-[11px] text-[#F1D2A1]/80 font-tabular border-l border-[#869440] pl-2 hidden sm:inline-block">
                       {isLiveTelemetry && !isTelemetryStale && lastLiveTelemetryTime
-                        ? lastLiveTelemetryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                        : 'SSE'}
+                        ? `${lastLiveTelemetryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}${mqttWssStatus === 'connected' ? ' · WSS' : ''}`
+                        : mqttWssStatus === 'connected'
+                          ? 'WSS'
+                          : 'SSE'}
                     </span>
                   </div>
                 );
@@ -2529,48 +2668,23 @@ export const App: React.FC = () => {
             {/* 5. CAMERA STREAM CAPTURE SECTION (#cameraCapture) */}
             {(currentTab === 'overview' || currentTab === 'all' || currentTab === 'model_vision') && (
               <section id="cameraCapture" className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs">
-                {/* Header Bar with Title and Domain Selector */}
+                {/* Header Bar with Title and Engine Pill */}
                 <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                   <div>
                     <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
                       Camera Subsystem · Edge &amp; Cloud AI Vision
                     </span>
                     <h2 className="text-lg font-bold text-[#263A35] font-display mt-0.5">
-                      {visionDomain === 'wildfire'
-                        ? 'Pemindaian Kanopi & Verifikasi Visual Titik Api'
-                        : 'Diagnosa Penyakit Daun & Patologi Tanaman'}
+                      Pemindaian Kanopi &amp; Verifikasi Visual Titik Api (Karhutla)
                     </h2>
                   </div>
 
-                  {/* Domain Selector & Status Pill */}
+                  {/* Vision Model & Optical State Indicator Badge */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Domain Toggle Tabs */}
-                    <div className="flex p-0.5 rounded-full bg-[#E2E0CB] border border-[#D6DCCE]">
-                      <button
-                        type="button"
-                        onClick={() => handleDomainChange('wildfire')}
-                        className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer ${visionDomain === 'wildfire'
-                            ? 'bg-[#737F35] text-white shadow-xs'
-                            : 'text-[#263A35] hover:text-[#737F35]'
-                          }`}
-                        aria-pressed={visionDomain === 'wildfire'}
-                      >
-                        <Flame size={12} className={visionDomain === 'wildfire' ? 'text-[#F1D2A1]' : ''} />
-                        <span>Karhutla (Wildfire)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDomainChange('leaf_disease')}
-                        className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer ${visionDomain === 'leaf_disease'
-                            ? 'bg-[#737F35] text-white shadow-xs'
-                            : 'text-[#263A35] hover:text-[#737F35]'
-                          }`}
-                        aria-pressed={visionDomain === 'leaf_disease'}
-                      >
-                        <Leaf size={12} className={visionDomain === 'leaf_disease' ? 'text-[#F1D2A1]' : ''} />
-                        <span>Penyakit Daun</span>
-                      </button>
-                    </div>
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#737F35] text-white shadow-xs flex items-center gap-1.5">
+                      <Flame size={12} className="text-[#F1D2A1]" />
+                      <span>be-binus · MobileNetV2 TFLite</span>
+                    </span>
 
                     {/* Optical State Indicator Badge */}
                     <span className="text-xs font-semibold px-2.5 py-1.5 rounded-full border flex items-center gap-1.5 bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
@@ -2692,9 +2806,7 @@ export const App: React.FC = () => {
                       ) : (
                         <>
                           <Sparkles size={13} className="text-[#F1D2A1]" />
-                          <span>
-                            {visionDomain === 'wildfire' ? 'Analisis Karhutla (Railway API)' : 'Diagnosa Penyakit Daun'}
-                          </span>
+                          <span>Analisis Karhutla (be-binus Railway)</span>
                         </>
                       )}
                     </button>
@@ -2782,12 +2894,10 @@ export const App: React.FC = () => {
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-white font-display">
-                              {visionDomain === 'wildfire'
-                                ? 'Kamera Pemantau Kanopi Hutan'
-                                : 'Kamera Diagnosa Patologi Daun'}
+                              Kamera Pemantau Kanopi Hutan &amp; Titik Api
                             </h3>
                             <p className="text-xs text-[#F1D2A1]/90 mt-1 leading-relaxed">
-                              Buka kamera laptop/smartphone, muat frame dari gateway ESP32-CAM, atau unggah file foto untuk verifikasi visual langsung ke model AI.
+                              Buka kamera laptop/smartphone, muat frame dari gateway ESP32-CAM, atau unggah file foto untuk inferensi karhutla via be-binus Railway.
                             </p>
                           </div>
                           <div className="flex gap-2 mt-1 flex-wrap justify-center">
@@ -2826,48 +2936,29 @@ export const App: React.FC = () => {
                     {/* Bottom Viewport Overlay Telemetry */}
                     <div className="absolute inset-x-3 bottom-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 z-10 pointer-events-none">
                       <div className="px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-medium backdrop-blur-sm border border-[#869440] shadow-xs max-w-full truncate">
-                        {visionDomain === 'wildfire'
-                          ? `Mode: Karhutla · Rel: ${railPositionMm} mm · Source: ${captureSource === 'camera' ? 'Webcam' : captureSource === 'upload' ? 'Upload' : captureSource === 'gateway' ? 'Gateway ESP32-CAM' : 'Standby'}`
-                          : `Mode: Diagnosa Daun · Status Layanan: ${isLeafDiseaseApiConfigured() ? 'Tersambung' : 'Belum Dideploy'}`}
+                        {`Mode: Karhutla (be-binus Railway) · Rel: ${railPositionMm ?? '--'} mm · Source: ${captureSource === 'camera' ? 'Webcam' : captureSource === 'upload' ? 'Upload' : captureSource === 'gateway' ? 'Gateway ESP32-CAM' : 'Standby'}`}
                       </div>
 
                       <div className="flex flex-wrap items-center justify-start sm:justify-end gap-1.5">
-                        {visionDomain === 'wildfire' ? (
-                          wildfireResult ? (
-                            <>
-                              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#A6B49E]" />
-                                Healthy: {visionProbs.healthy.toFixed(1)}%
-                              </span>
-                              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#FB923C]" />
-                                Smoke: {visionProbs.smoke.toFixed(1)}%
-                              </span>
-                              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#F87171]" />
-                                Fire: {visionProbs.fire.toFixed(1)}%
-                              </span>
-                            </>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-mono border border-[#869440] shadow-xs">
-                              {edgePrediction ? `Edge AI: ${edgePrediction}${edgeConfidence !== null ? ` (${(edgeConfidence * 100).toFixed(0)}%)` : ''} · Cloud: Standby` : 'Inferensi Cloud Siap'}
-                            </span>
-                          )
-                        ) : (
+                        {wildfireResult ? (
                           <>
                             <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
                               <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#A6B49E]" />
-                              Healthy: {leafProbs.healthy.toFixed(1)}%
+                              Non-Fire: {visionProbs.healthy.toFixed(1)}%
                             </span>
                             <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#EAB308]" />
-                              Powdery: {leafProbs.powdery.toFixed(1)}%
+                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#FB923C]" />
+                              Smoke: {visionProbs.smoke.toFixed(1)}%
                             </span>
                             <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[9px] sm:text-[10px] font-bold backdrop-blur-sm border border-[#869440] flex items-center gap-1.5 shadow-xs whitespace-nowrap">
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#EA580C]" />
-                              Rust: {leafProbs.rust.toFixed(1)}%
+                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#F87171]" />
+                              Fire: {visionProbs.fire.toFixed(1)}%
                             </span>
                           </>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-lg bg-[#5E682B]/90 text-[#F1D2A1] text-[10px] font-mono border border-[#869440] shadow-xs">
+                            {edgePrediction ? `Edge AI: ${edgePrediction}${edgeConfidence !== null ? ` (${(edgeConfidence * 100).toFixed(0)}%)` : ''} · Cloud: Standby` : 'Inferensi Cloud Siap (be-binus)'}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -2882,14 +2973,9 @@ export const App: React.FC = () => {
                           <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
                             Waktu Pemindaian Optik
                           </span>
-                          {wildfireResult && visionDomain === 'wildfire' && (
+                          {wildfireResult && (
                             <span className="text-[10px] font-mono font-bold text-[#737F35] bg-[#EFF3EF] px-1.5 py-0.5 rounded border border-[#D6DCCE]">
                               {wildfireResult.inference_time_ms.toFixed(1)} ms
-                            </span>
-                          )}
-                          {leafResult && visionDomain === 'leaf_disease' && (
-                            <span className="text-[10px] font-mono font-bold text-[#737F35] bg-[#EFF3EF] px-1.5 py-0.5 rounded border border-[#D6DCCE]">
-                              {leafResult.inference_time_ms.toFixed(1)} ms
                             </span>
                           )}
                         </div>
@@ -2906,9 +2992,7 @@ export const App: React.FC = () => {
                           </span>
                         </span>
                         <span className="text-[10px] text-[#50645F] block mt-1 font-mono">
-                          {visionDomain === 'wildfire'
-                            ? `Engine: ${wildfireResult?.model_name || 'MobileNetV2 (tes-tflite Railway)'}`
-                            : `Engine: ${leafResult?.model_name || 'MobileNetV3 (PlantDoc 3-Class)'}`}
+                          {`Engine: ${wildfireResult?.model_name || 'MobileNetV2 (be-binus Railway)'}`}
                         </span>
                       </div>
 
@@ -2916,12 +3000,10 @@ export const App: React.FC = () => {
                       <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 flex justify-between items-center">
                         <div>
                           <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
-                            {visionDomain === 'wildfire' ? 'Pola Citra Terdeteksi' : 'Diagnosa Penyakit Daun'}
+                            Pola Citra Terdeteksi
                           </span>
                           <span className="text-sm font-bold text-[#263A35] block mt-0.5 font-display">
-                            {visionDomain === 'wildfire'
-                              ? visionPrediction
-                              : leafPrediction || (isLeafDiseaseApiConfigured() ? 'Siap Dianalisis' : 'Layanan Belum Tersedia')}
+                            {visionPrediction}
                           </span>
                         </div>
                         <div className="text-right">
@@ -2929,13 +3011,7 @@ export const App: React.FC = () => {
                             Keyakinan (Confidence)
                           </span>
                           <span className="text-sm font-bold text-[#737F35] font-tabular block mt-0.5">
-                            {visionDomain === 'wildfire'
-                              ? wildfireResult
-                              ? `${wildfireResult.confidence_percentage.toFixed(1)}%`
-                              : '-'
-                              : leafPrediction
-                                ? `${Math.max(leafProbs.healthy, leafProbs.powdery, leafProbs.rust).toFixed(1)}%`
-                                : '-'}
+                            {wildfireResult ? `${wildfireResult.confidence_percentage.toFixed(1)}%` : '-'}
                           </span>
                         </div>
                       </div>
@@ -2944,9 +3020,7 @@ export const App: React.FC = () => {
                       <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 space-y-2.5">
                         <div className="flex justify-between items-center mb-0.5">
                           <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
-                            {visionDomain === 'wildfire'
-                              ? 'Klasifikasi Karhutla'
-                              : 'Klasifikasi Penyakit Daun (3-Kelas)'}
+                            Klasifikasi Karhutla (3-Kelas)
                           </span>
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md border bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]">
                             {inferenceStatus === 'analyzing'
@@ -2957,149 +3031,96 @@ export const App: React.FC = () => {
                           </span>
                         </div>
 
-                        {visionDomain === 'wildfire' ? (
-                          wildfireResult ? (
-                            <>
-                              {/* Wildfire Bar 1: Non-Fire */}
-                              <div>
-                                <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                  <span>Healthy Canopy (Non-Fire)</span>
-                                  <span className="font-tabular text-[#737F35] font-bold">
-                                    {visionProbs.healthy.toFixed(1)}%
-                                  </span>
-                                </div>
-                                <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-[#737F35] flora-meter-bar transition-all duration-500"
-                                    style={{ width: `${Math.min(100, Math.max(0, visionProbs.healthy))}%` }}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Wildfire Bar 2: Smoke */}
-                              <div>
-                                <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                  <span>Smoke Plume (Smoke)</span>
-                                  <span className="font-tabular text-[#9A3412] font-bold">
-                                    {visionProbs.smoke.toFixed(1)}%
-                                  </span>
-                                </div>
-                                <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-[#EA580C] flora-meter-bar transition-all duration-500"
-                                    style={{ width: `${Math.min(100, Math.max(0, visionProbs.smoke))}%` }}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Wildfire Bar 3: Fire */}
-                              <div>
-                                <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                  <span>Surface Fire (Fire)</span>
-                                  <span className="font-tabular text-[#7C2D12] font-bold">
-                                    {visionProbs.fire.toFixed(1)}%
-                                  </span>
-                                </div>
-                                <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-[#B43E1F] flora-meter-bar transition-all duration-500"
-                                    style={{ width: `${Math.min(100, Math.max(0, visionProbs.fire))}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="py-4 px-3 text-center text-xs text-[#50645F] bg-[#EFF3EF] rounded-lg border border-[#D6DCCE]">
-                              <p className="font-semibold text-[#263A35] mb-0.5">Belum Ada Hasil Inferensi Citra</p>
-                              <p className="text-[11px] m-0">Muat frame dari gateway atau unggah foto lalu klik &quot;Analisis Karhutla&quot; untuk menghasilkan skor probabilitas model.</p>
-                            </div>
-                          )
-                        ) : (
+                        {wildfireResult ? (
                           <>
-                            {/* Leaf Disease Bar 1: Healthy */}
+                            {/* Wildfire Bar 1: Non-Fire */}
                             <div>
                               <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                <span>Healthy (Daun Sehat)</span>
+                                <span>Healthy Canopy (Non-Fire)</span>
                                 <span className="font-tabular text-[#737F35] font-bold">
-                                  {leafProbs.healthy.toFixed(1)}%
+                                  {visionProbs.healthy.toFixed(1)}%
                                 </span>
                               </div>
                               <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
                                 <div
                                   className="h-full rounded-full bg-[#737F35] flora-meter-bar transition-all duration-500"
-                                  style={{ width: `${Math.min(100, Math.max(0, leafProbs.healthy))}%` }}
+                                  style={{ width: `${Math.min(100, Math.max(0, visionProbs.healthy))}%` }}
                                 />
                               </div>
                             </div>
 
-                            {/* Leaf Disease Bar 2: Powdery Mildew */}
+                            {/* Wildfire Bar 2: Smoke */}
                             <div>
                               <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                <span>Powdery Mildew (Embun Tepung)</span>
-                                <span className="font-tabular text-[#CA8A04] font-bold">
-                                  {leafProbs.powdery.toFixed(1)}%
-                                </span>
-                              </div>
-                              <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-[#EAB308] flora-meter-bar transition-all duration-500"
-                                  style={{ width: `${Math.min(100, Math.max(0, leafProbs.powdery))}%` }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Leaf Disease Bar 3: Leaf Rust */}
-                            <div>
-                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
-                                <span>Leaf Rust (Karat Daun)</span>
-                                <span className="font-tabular text-[#C2410C] font-bold">
-                                  {leafProbs.rust.toFixed(1)}%
+                                <span>Smoke Plume (Smoke)</span>
+                                <span className="font-tabular text-[#9A3412] font-bold">
+                                  {visionProbs.smoke.toFixed(1)}%
                                 </span>
                               </div>
                               <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
                                 <div
                                   className="h-full rounded-full bg-[#EA580C] flora-meter-bar transition-all duration-500"
-                                  style={{ width: `${Math.min(100, Math.max(0, leafProbs.rust))}%` }}
+                                  style={{ width: `${Math.min(100, Math.max(0, visionProbs.smoke))}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Wildfire Bar 3: Fire */}
+                            <div>
+                              <div className="flex justify-between text-xs font-semibold text-[#263A35] mb-1">
+                                <span>Surface Fire (Fire)</span>
+                                <span className="font-tabular text-[#7C2D12] font-bold">
+                                  {visionProbs.fire.toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="h-2 rounded-full bg-[#E2E0CB] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[#B43E1F] flora-meter-bar transition-all duration-500"
+                                  style={{ width: `${Math.min(100, Math.max(0, visionProbs.fire))}%` }}
                                 />
                               </div>
                             </div>
                           </>
+                        ) : (
+                          <div className="py-4 px-3 text-center text-xs text-[#50645F] bg-[#EFF3EF] rounded-lg border border-[#D6DCCE]">
+                            <p className="font-semibold text-[#263A35] mb-0.5">Belum Ada Hasil Inferensi Citra</p>
+                            <p className="text-[11px] m-0">Muat frame dari gateway atau unggah foto lalu klik &quot;Analisis Karhutla&quot; untuk mengirim ke be-binus-production.up.railway.app.</p>
+                          </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Informational Footer Note */}
-                    {visionDomain !== 'wildfire' && (
-                      <div className="bg-[#F5F4EE] border border-[#E2E0CB] p-3 rounded-xl flex items-start gap-2 text-[11px] text-[#50645F] leading-relaxed">
-                        <Info size={14} className="shrink-0 mt-0.5 text-[#4E635E]" />
-                        <p className="m-0">
-                          Domain penyakit daun terisolasi secara independen. Tidak akan memanipulasi atau mengirim data daun ke model titik api.
-                        </p>
-                      </div>
-                    )}
+                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] p-3 rounded-xl flex items-start gap-2 text-[11px] text-[#50645F] leading-relaxed">
+                      <Info size={14} className="shrink-0 mt-0.5 text-[#4E635E]" />
+                      <p className="m-0">
+                        Endpoint aktif: <code className="font-mono text-[#263A35]">be-binus-production.up.railway.app</code> (<code className="font-mono">/api/v1/predict</code> &amp; ESP32-CAM <code className="font-mono">/predict/fire</code>).
+                      </p>
+                    </div>
                   </div>
                 </div>
               </section>
             )}
 
-            {/* 6. SCANNER CARRIAGE MANUAL CONTROL (#device-control) */}
+            {/* 6. 4-DOF ROBOT ARM, SLIDER & EMQX WSS CONTROL (#device-control) */}
             {(currentTab === 'overview' || currentTab === 'all') && (
               <>
                 <section id="device-control" className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs">
                   <div className="flex justify-between items-start mb-4 flex-wrap gap-2">
                     <div>
                       <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
-                        Actuator Subsystem · L298N Kanal OUT 3 &amp; OUT 4
+                        Actuator &amp; Robotic Subsystem · L298N Slider + 4-DoF Arm + VL53L0X + 5-Ch Flame
                       </span>
                       <h2 className="text-lg font-bold text-[#263A35] font-display">
-                        Scanner Carriage Motor Rel (OUT3 &amp; OUT4) — {railPositionMm} / 1200 mm
+                        Kontrol Lengan Robot 4-DoF &amp; Scanner Rel — {railPositionMm !== null ? `${railPositionMm} / 1200 mm` : 'Standby'}
                       </h2>
                     </div>
                     <span className="text-xs font-semibold px-3 py-1 rounded-full border bg-[#EFF3EF] text-[#4E635E] border-[#A6B49E] flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                       <span className={`w-2 h-2 rounded-full ${isLiveTelemetry && !isTelemetryStale ? 'bg-[#16A34A] animate-pulse' : 'bg-[#4E635E]'}`} />
-                      {movementStatus === 'idle'
-                        ? `${motorDriverInfo} STANDBY`
-                        : `${motorDriverInfo} · ${movementStatus.replace(/_/g, ' ').toUpperCase()}`}
+                      {systemState
+                        ? `${systemState} · ${movementStatus === 'idle' ? 'READY' : movementStatus.replace(/_/g, ' ').toUpperCase()}`
+                        : movementStatus === 'idle'
+                          ? `${motorDriverInfo} STANDBY`
+                          : `${motorDriverInfo} · ${movementStatus.replace(/_/g, ' ').toUpperCase()}`}
                     </span>
                   </div>
 
@@ -3107,13 +3128,13 @@ export const App: React.FC = () => {
                   <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 text-xs font-bold text-[#263A35] mb-2 font-tabular">
                       <span className={limitLeft ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
-                        SW1 Left: {limitLeft ? 'ACTIVE (0mm)' : 'CLEAR'}
+                        SW1 Left (Z1): {limitLeft ? 'ACTIVE (0mm)' : 'CLEAR'}
                       </span>
                       <span className="text-[#4E635E]">
-                        Carriage Position: {railPositionMm !== null ? `${railPositionMm} mm (${((railPositionMm / 1200) * 100).toFixed(0)}%)` : 'Indeterminate (Standby)'}
+                        Zona: {zone ?? '--'} · Posisi Rel: {railPositionMm !== null ? `${railPositionMm} mm (${((railPositionMm / 1200) * 100).toFixed(0)}%)` : 'Indeterminate (Standby)'}
                       </span>
                       <span className={limitRight ? 'text-[#DC2626]' : 'text-[#4E635E]'}>
-                        SW2 Right: {limitRight ? 'ACTIVE (1200mm)' : 'CLEAR'}
+                        SW2 Right (Z3): {limitRight ? 'ACTIVE (1200mm)' : 'CLEAR'}
                       </span>
                     </div>
                     <div className="h-3 rounded-full bg-[#E2E0CB] relative overflow-hidden">
@@ -3124,64 +3145,251 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Fail-Closed Actuator Safety Gate Banner */}
-                  <div className="bg-[#FEF7E8] border border-[#FDE3B5] rounded-xl p-3 mb-4 flex items-start gap-2.5 text-xs text-[#8A570C]">
-                    <span className="text-base leading-none shrink-0" aria-hidden="true">🔒</span>
-                    <div>
-                      <span className="font-bold block">Fail-Closed Safety Gate Aktif</span>
-                      <p className="m-0 text-[11px] leading-relaxed">
-                        Kontrol rel motor L298N (L/R/S) dan trigger rana kamera (C) dinonaktifkan dalam mode Read-Only via Backend Gateway demi keamanan aktuator fisik.
-                      </p>
+                  {/* Direct EMQX WSS (Port 8084) Connection & Fail-Closed Safety Gate */}
+                  <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={16} className={actuatorArmed ? 'text-[#16A34A]' : 'text-[#8A570C]'} />
+                        <div>
+                          <span className="text-xs font-bold text-[#263A35] block">
+                            EMQX Cloud Direct WSS (Port 8084) &amp; Fail-Closed Safety Gate
+                          </span>
+                          <span className="text-[11px] text-[#50645F]">
+                            Status WSS: <strong className="uppercase">{mqttWssStatus}</strong> · Kredensial tidak disimpan di kode statis (session operator).
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActuatorArmed((prev) => !prev)}
+                        disabled={mqttWssStatus !== 'connected'}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                          actuatorArmed
+                            ? 'bg-[#DC2626] text-white border-[#B91C1C]'
+                            : 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
+                        }`}
+                      >
+                        {actuatorArmed ? '🔓 ARMED · SIAP EKSEKUSI' : '🔒 TERKUNCI (ARM AKTUATOR)'}
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleConnectMqttWss} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <input
+                        type="text"
+                        value={mqttHostInput}
+                        onChange={(e) => setMqttHostInput(e.target.value)}
+                        placeholder="Host EMQX (emqxsl.com)"
+                        aria-label="Host Broker EMQX WSS"
+                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                      />
+                      <input
+                        type="text"
+                        value={mqttUserInput}
+                        onChange={(e) => setMqttUserInput(e.target.value)}
+                        placeholder="Username EMQX"
+                        aria-label="Username Broker EMQX"
+                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                      />
+                      <input
+                        type="password"
+                        value={mqttPassInput}
+                        onChange={(e) => setMqttPassInput(e.target.value)}
+                        placeholder="Password EMQX"
+                        aria-label="Password Broker EMQX"
+                        className="px-3 py-2 rounded-lg bg-white border border-[#DCE4E1] text-xs font-mono text-[#263A35]"
+                      />
+                      {mqttWssStatus === 'connected' ? (
+                        <button
+                          type="button"
+                          onClick={handleDisconnectMqttWss}
+                          className="px-3 py-2 rounded-lg bg-[#FEEAEA] text-[#961C1C] border border-[#FCCECE] text-xs font-bold cursor-pointer hover:bg-[#FECACA]"
+                        >
+                          Putuskan WSS :8084
+                        </button>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={mqttWssStatus === 'connecting'}
+                          className="px-3 py-2 rounded-lg bg-[#5E682B] hover:bg-[#525B25] text-white border border-[#869440] text-xs font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          {mqttWssStatus === 'connecting' ? 'Menghubungkan...' : 'Hubungkan EMQX WSS :8084'}
+                        </button>
+                      )}
+                    </form>
+
+                    {mqttWssError && (
+                      <div className="p-2.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[11px] text-[#991B1B]">
+                        {mqttWssError}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Live 4-DoF Arm Servo, VL53L0X ToF, Relay & 5-Ch Flame Array */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5">
+                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block mb-2">
+                        4-DoF Arm Servo Angles (GPIO 13, 14, 15, 5)
+                      </span>
+                      <div className="grid grid-cols-4 gap-1.5 text-center font-tabular">
+                        {['Base J1', 'Shld J2', 'Elbw J3', 'Nozl J4'].map((label, idx) => (
+                          <div key={label} className="bg-white border border-[#DCE4E1] rounded-lg p-1.5">
+                            <span className="text-[9px] text-[#50645F] block">{label}</span>
+                            <span className="text-xs font-bold text-[#263A35]">
+                              {isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[idx] === 'number'
+                                ? `${servoAngles[idx]}°`
+                                : '--'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5">
+                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block mb-2">
+                        5-Ch Flame Array (GPIO 25, 26, 27, 32, 33)
+                      </span>
+                      <div className="grid grid-cols-5 gap-1 text-center font-mono text-[10px]">
+                        {[0, 1, 2, 3, 4].map((ch) => {
+                          const val = isLiveTelemetry && !isTelemetryStale && flameChannels ? flameChannels[ch] : undefined;
+                          const isFire = val === 0;
+                          return (
+                            <div
+                              key={ch}
+                              className={`rounded-lg p-1.5 border font-bold ${
+                                val === undefined
+                                  ? 'bg-white border-[#DCE4E1] text-[#50645F]'
+                                  : isFire
+                                    ? 'bg-[#FEEAEA] border-[#DC2626] text-[#961C1C] animate-pulse'
+                                    : 'bg-[#EFF3EF] border-[#A6B49E] text-[#263A35]'
+                              }`}
+                            >
+                              <div>FL{ch}</div>
+                              <div>{val === undefined ? '--' : isFire ? 'API' : 'OK'}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[#50645F] font-semibold">VL53L0X ToF Jarak:</span>
+                        <span className="font-bold font-tabular text-[#263A35]">
+                          {isLiveTelemetry && !isTelemetryStale && typeof distanceMm === 'number'
+                            ? `${distanceMm} mm`
+                            : 'Unavailable'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs mt-1.5">
+                        <span className="text-[#50645F] font-semibold">Pompa (GPIO 23):</span>
+                        <span className={`font-bold ${pumpLockout ? 'text-[#B45309]' : pumpStatus ? 'text-[#15803D]' : 'text-[#263A35]'}`}>
+                          {!isLiveTelemetry || isTelemetryStale || pumpStatus === null
+                            ? 'Standby'
+                            : pumpLockout
+                              ? 'LOCKOUT (BASAH)'
+                              : pumpStatus
+                                ? 'AKTIF (ON)'
+                                : 'MATI (OFF)'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs mt-1.5">
+                        <span className="text-[#50645F] font-semibold">Ventilasi / Alarm Gas:</span>
+                        <span className="font-bold text-[#263A35]">
+                          {isLiveTelemetry && !isTelemetryStale
+                            ? `${ventilationActive ? 'FAN ON' : 'FAN OFF'} · ${gasAlarmActive ? 'ALARM!' : 'AMAN'}`
+                            : 'Standby'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Rail & Camera Trigger Controls */}
                   <div
                     className="grid grid-cols-2 sm:grid-cols-4 gap-3"
                     role="group"
-                    aria-label="Kontrol Scanner Motor Rel L298N (Dinonaktifkan - Fail Closed)"
+                    aria-label="Kontrol Scanner Motor Rel L298N"
                   >
                     <button
+                      type="button"
                       onClick={() => handleRailCommand('L')}
-                      disabled={true}
-                      aria-disabled="true"
-                      aria-label="Gerakkan kamera rel ke kiri (L) - dinonaktifkan (Fail-Closed Gate)"
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] text-[#50645F] border-[#D6DCCE] opacity-60 cursor-not-allowed"
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span aria-hidden="true">◀</span>
+                      <ArrowLeft size={14} />
                       <span>Move Left (L)</span>
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleRailCommand('S')}
-                      disabled={true}
-                      aria-disabled="true"
-                      aria-label="Hentikan darurat motor rel (S) - dinonaktifkan (Fail-Closed Gate)"
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] text-[#50645F] border-[#D6DCCE] opacity-60 cursor-not-allowed"
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span aria-hidden="true">■</span>
+                      <Square size={14} />
                       <span>Stop Motor (S)</span>
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleRailCommand('R')}
-                      disabled={true}
-                      aria-disabled="true"
-                      aria-label="Gerakkan kamera rel ke kanan (R) - dinonaktifkan (Fail-Closed Gate)"
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] text-[#50645F] border-[#D6DCCE] opacity-60 cursor-not-allowed"
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <span>Move Right (R)</span>
-                      <span aria-hidden="true">▶</span>
+                      <ArrowRight size={14} />
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleRailCommand('C')}
-                      disabled={true}
-                      aria-disabled="true"
-                      aria-label="Trigger tangkapan foto kamera pada posisi rel (C) - dinonaktifkan (Fail-Closed Gate)"
-                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#F5F4EE] text-[#50645F] border-[#D6DCCE] opacity-60 cursor-not-allowed"
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-11 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border shadow-xs bg-[#5E682B] hover:bg-[#525B25] text-white border-[#869440] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span aria-hidden="true">◉</span>
-                      <span>Capture Photo (C)</span>
+                      <Camera size={14} />
+                      <span>Capture ESP32-CAM (C)</span>
+                    </button>
+                  </div>
+
+                  {/* Arm Park & Emergency Stop Controls */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_RETRACT_ARM', 'Tarik Lengan ke Posisi Parkir')}
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Crosshair size={13} />
+                      <span>Retract Arm (Park)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#EFF3EF] text-[#263A35] border-[#D6DCCE] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ShieldCheck size={13} />
+                      <span>Park Safe Zone</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_EMERGENCY_STOP', 'EMERGENCY STOP DARURAT')}
+                      disabled={mqttWssStatus !== 'connected'}
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-[#DC2626] hover:bg-[#B91C1C] text-white border-[#991B1B] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <AlertOctagon size={13} />
+                      <span>EMERGENCY STOP</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset Emergency Stop')}
+                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-[#FEF7E8] hover:bg-[#FDE3B5] text-[#8A570C] border-[#FDE3B5] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw size={13} />
+                      <span>Reset E-STOP</span>
                     </button>
                   </div>
 
@@ -3219,8 +3427,228 @@ export const App: React.FC = () => {
                   </div>
                 </section>
 
-                {/* 7. TREATMENT & IRRIGATION / SUPPRESSION GUIDANCE (#treatment) */}
-                <div className="scroll-mt-6 sm:scroll-mt-8 grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch" id="treatment">
+                {/* 7. ACTION COMMAND SOLUTIONS & MITIGATION (#treatment) */}
+                <section className="scroll-mt-6 sm:scroll-mt-8 flora-card p-5 sm:p-6 shadow-xs" id="treatment">
+                  <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
+                    <div>
+                      <span className="text-[10px] font-bold text-[#4E635E] uppercase tracking-widest block">
+                        Executable Robotic Solvers · 4 Kondisi Sensor Onboard
+                      </span>
+                      <h2 className="text-lg font-bold text-[#263A35] font-display">
+                        Pusat Solusi Perintah Aksi (Kering · Basah · Kebakaran · Gas Beracun)
+                      </h2>
+                    </div>
+                    <span
+                      className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                        !isLiveTelemetry || isTelemetryStale || !envCondition
+                          ? 'bg-[#EFF3EF] text-[#50645F] border-[#D6DCCE]'
+                          : envCondition === 'KEBAKARAN' || envCondition === 'GAS_BERACUN'
+                            ? 'bg-[#FEEAEA] text-[#961C1C] border-[#FCCECE]'
+                            : envCondition === 'KERING' || envCondition === 'BASAH'
+                              ? 'bg-[#FEF7E8] text-[#8A570C] border-[#FDE3B5]'
+                              : 'bg-[#EFF3EF] text-[#263A35] border-[#A6B49E]'
+                      }`}
+                    >
+                      Kondisi Aktif: {isLiveTelemetry && !isTelemetryStale && envCondition ? envCondition : 'STANDBY'}
+                    </span>
+                  </div>
+
+                  {/* Active Recommendation Execute Bar */}
+                  <div className="bg-[#F5F4EE] border border-[#E2E0CB] rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider block">
+                        Rekomendasi Eksekusi Firmware Real-Time
+                      </span>
+                      <div className="text-sm font-bold text-[#263A35] mt-0.5 truncate">
+                        {isLiveTelemetry && !isTelemetryStale && (commandLabel || actionCommand)
+                          ? `${commandLabel || actionCommand} (${actionCommand || 'CMD_IDLE'})`
+                          : 'Menunggu telemetri kondisi sensor dari ESP32 Main...'}
+                      </div>
+                      {commandPayload ? (
+                        <code className="text-[10px] font-mono text-[#4E635E] block mt-0.5 truncate">
+                          Payload: {typeof commandPayload === 'string' ? commandPayload : JSON.stringify(commandPayload)}
+                        </code>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!actionCommand || actionCommand === 'CMD_IDLE') return;
+                        let parsedParams: Record<string, unknown> | undefined;
+                        if (commandPayload && typeof commandPayload === 'object' && 'params' in (commandPayload as Record<string, unknown>)) {
+                          const p = (commandPayload as { params?: unknown }).params;
+                          if (p && typeof p === 'object') parsedParams = p as Record<string, unknown>;
+                        } else if (typeof commandPayload === 'string') {
+                          try {
+                            const parsed = JSON.parse(commandPayload) as { params?: Record<string, unknown> };
+                            if (parsed?.params && typeof parsed.params === 'object') parsedParams = parsed.params;
+                          } catch {
+                            // Ignore malformed string payload
+                          }
+                        }
+                        dispatchRobotCommand(actionCommand, commandLabel || actionCommand, parsedParams);
+                      }}
+                      disabled={
+                        mqttWssStatus !== 'connected' ||
+                        !actuatorArmed ||
+                        !isLiveTelemetry ||
+                        isTelemetryStale ||
+                        !actionCommand ||
+                        actionCommand === 'CMD_IDLE'
+                      }
+                      className="shrink-0 px-4 py-2.5 rounded-xl bg-[#5E682B] hover:bg-[#525B25] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Send size={13} />
+                      <span>Eksekusi Perintah Aktif</span>
+                    </button>
+                  </div>
+
+                  {/* 4 Condition Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
+                    <div className={`rounded-xl p-3.5 border ${envCondition === 'KERING' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEF7E8] border-[#D97706]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
+                          <Droplet size={14} className="text-[#D97706]" />
+                          1. KERING (Soil &lt; 30% / Heat Stress)
+                        </span>
+                        <span className="text-[10px] font-mono text-[#50645F]">Pompa &amp; Misting</span>
+                      </div>
+                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                        Menyalakan pompa irigasi atau penyiraman kabut otomatis dengan batas watchdog 12 detik.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_START_IRRIGATION', 'Aktifkan Irigasi (KERING)')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-[#5E682B] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Start Irrigation
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_START_MISTING', 'Aktifkan Misting Kanopi')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Start Misting
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={`rounded-xl p-3.5 border ${envCondition === 'BASAH' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#EFF3EF] border-[#4E635E]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
+                          <ShieldCheck size={14} className="text-[#4E635E]" />
+                          2. BASAH (Soil &gt; 75% / Jenuh)
+                        </span>
+                        <span className="text-[10px] font-mono text-[#50645F]">Interlock Lockout</span>
+                      </div>
+                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                        Mengunci pompa irigasi agar tidak over-watering dan memarkirkan lengan ke zona aman.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_PUMP_LOCKOUT', 'Kunci Pompa (BASAH)')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-[#4E635E] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Pump Lockout
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Park Safe Zone
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_UNLOCK_PUMP', 'Buka Kunci Pompa')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#8A570C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Unlock Pump
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={`rounded-xl p-3.5 border ${envCondition === 'KEBAKARAN' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEEAEA] border-[#DC2626]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
+                          <Flame size={14} className="text-[#DC2626]" />
+                          3. KEBAKARAN (Flame / ToF / Vision Fire)
+                        </span>
+                        <span className="text-[10px] font-mono text-[#961C1C]">Staged Suppression</span>
+                      </div>
+                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                        Menggerakkan rel + lengan 4-DoF menuju zona api dengan verifikasi jarak VL53L0X (150–800 mm).
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_FIRE_SUPPRESSION', 'Pemadaman Api Aktif', { duration: 4000 })}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-[#DC2626] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Fire Suppression
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_FIRE_SCAN_START', 'Mulai Scan Zona Api')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#FECACA] text-[#961C1C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Fire Scan Start
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_EVACUATE_OPPOSITE', 'Evakuasi Lengan ke Zona Aman')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#DCE4E1] text-[#263A35] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Evacuate Opposite
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={`rounded-xl p-3.5 border ${envCondition === 'GAS_BERACUN' && isLiveTelemetry && !isTelemetryStale ? 'bg-[#FEF7E8] border-[#EA580C]' : 'bg-[#F5F4EE] border-[#E2E0CB]'}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-[#263A35] flex items-center gap-1.5">
+                          <Wind size={14} className="text-[#EA580C]" />
+                          4. GAS_BERACUN (MQ-135 &gt; Ambang / Smoke)
+                        </span>
+                        <span className="text-[10px] font-mono text-[#9A3412]">Ventilasi &amp; Alarm</span>
+                      </div>
+                      <p className="text-[11px] text-[#50645F] mb-2.5 m-0">
+                        Mengaktifkan ventilasi udara &amp; alarm gas berbahaya serta memicu verifikasi frame ESP32-CAM.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_VENTILATION_ACTIVE', 'Aktifkan Ventilasi Gas')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-[#EA580C] text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Ventilation Active
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_TRIGGER_GAS_ALARM', 'Picu Alarm Gas Beracun')}
+                          disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#FDE3B5] text-[#8A570C] text-[11px] font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Trigger Gas Alarm
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 7B. TREATMENT & IRRIGATION / SUPPRESSION GUIDANCE */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
                   {/* Left: Treatment & Action Guidance */}
                   <section className="flora-card p-5 sm:p-6 flex flex-col justify-between shadow-xs">
                     <div>
@@ -3387,45 +3815,49 @@ export const App: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 lg:gap-4">
                     {[
                       {
-                        label: 'ESP32 Main Node',
+                        label: 'NodeMCU ESP32-S Main',
                         status: isLiveTelemetry && !isTelemetryStale ? 'ONLINE LIVE' : 'OFFLINE',
-                        detail: `MAC: 8C:AA:B5:37:71:18 · Node: ${activeNodeId || 'ESP32-MAIN'} · ${isLiveTelemetry && !isTelemetryStale ? 'Live Gateway SSE (/api/telemetry/stream)' : 'Device Offline / Standby'}`,
+                        detail: `Direct GPIO · Node: ${activeNodeId || 'ESP32-MAIN'} · ${mqttWssStatus === 'connected' ? 'WSS :8084' : 'SSE Gateway'}`,
                       },
                       {
                         label: 'ESP32-CAM Node',
-                        status: gatewayFrameStatus === 'ready' && !gatewayFrameMeta?.isStale ? 'FRAME READY' : 'OFFLINE',
-                        detail: `MAC: F8:B3:B7:A6:F3:9C · ${gatewayFrameStatus === 'ready' && gatewayFrameMeta && !gatewayFrameMeta.isStale ? `${(gatewayFrameMeta.byteLength / 1024).toFixed(1)} KB (HTTP 200)` : 'Backend Cache (/api/vision/latest-frame.jpg) · Offline'}`,
+                        status: gatewayFrameStatus === 'ready' && !gatewayFrameMeta?.isStale ? 'FRAME READY' : 'STANDBY',
+                        detail: `MAC: F8:B3:B7:A6:F3:9C · POST be-binus-production.up.railway.app/predict/fire`,
                       },
-                      { label: 'C Edge Kernel 1', status: 'ACTIVE', detail: 'model_hazard.h (100 Trees RF in-memory)' },
-                      { label: 'C Edge Kernel 2', status: 'ACTIVE', detail: 'grenvis_sensor_model.h (TFLite in-memory)' },
                       {
-                        label: 'Backend Gateway',
-                        status: gatewayStatus === 'connected'
-                          ? (gatewayHealth && !gatewayHealth.mqttConnected
-                            ? 'BROKER DISCONNECTED'
-                            : (isLiveTelemetry ? (isTelemetryStale ? 'STALE' : 'CONNECTED LIVE') : 'READY'))
-                          : gatewayStatus === 'connecting'
-                            ? 'CONNECTING'
-                            : 'OFFLINE',
-                        detail: `HTTP :3000 · MQTT: ${gatewayHealth ? (gatewayHealth.mqttConnected ? 'Connected' : 'Disconnected') : 'Checking...'} · Uptime: ${gatewayHealth?.uptimeSeconds ?? 0}s`,
+                        label: 'Railway Vision AI',
+                        status: 'ACTIVE (HTTPS)',
+                        detail: 'be-binus-production.up.railway.app (MobileNetV2 TFLite · 3-Class)',
                       },
-                      { label: 'ESP-NOW Link', status: 'ACTIVE', detail: 'Inter-Board Wireless Mesh (CH 6)' },
                       {
-                        label: 'Sensor Hardware Topology',
+                        label: 'EMQX Cloud Broker',
+                        status: mqttWssStatus === 'connected' ? 'WSS CONNECTED' : gatewayHealth?.mqttConnected ? 'TLS CONNECTED' : 'STANDBY',
+                        detail: 'q2277711.ala.asia-southeast1.emqxsl.com · MQTTS :8883 & WSS :8084',
+                      },
+                      {
+                        label: 'Lengan Robot 4-DoF + ToF',
+                        status: systemState || 'STANDBY',
+                        detail: `Servo GPIO 13,14,15,5 · VL53L0X I2C (21,22): ${typeof distanceMm === 'number' ? `${distanceMm} mm` : '--'}`,
+                      },
+                      {
+                        label: 'Sensor Onboard Node',
                         status: isLiveTelemetry && !isTelemetryStale ? 'STREAMING' : 'OFFLINE',
-                        detail: 'Fisik: DHT22 (Suhu, RH), Tanah v1.2, MQ-135, Flame Sensor (Tanpa Hujan/Cahaya)',
+                        detail: 'DHT22 (4) · Soil ADC (34) · MQ-135 (35) · Flame 5-Ch (25,26,27,32,33)',
                       },
                       {
-                        label: 'Scanner Motor L298N',
-                        status: 'FAIL-CLOSED',
-                        detail: 'Kontrol dinonaktifkan · Fail-Closed Safety Gate aktif',
+                        label: 'Slider Rel L298N + Pompa',
+                        status: pumpLockout ? 'LOCKOUT' : pumpStatus ? 'PUMP ON' : 'STANDBY',
+                        detail: 'OUT3/OUT4 (16,17) · Limit (18,19) · Relay Pompa (23) · Zona 1-3',
                       },
-                    ].map((dev: any) => (
+                      {
+                        label: 'Fail-Closed Safety Gate',
+                        status: mqttWssStatus === 'connected' && actuatorArmed ? 'ARMED' : 'LOCKED',
+                        detail: mqttWssStatus === 'connected' && actuatorArmed ? 'WSS :8084 Aktif · Perintah 2-arah diizinkan' : 'Terkunci Aman · Aktifkan WSS & ARM AKTUATOR untuk kontrol',
+                      },
+                    ].map((dev) => (
                       <article
                         key={dev.label}
-                        onClick={dev.onClick}
-                        className={`flora-card flora-card-interactive p-4 shadow-xs flex flex-col justify-between min-h-24 ${dev.interactive ? 'cursor-pointer hover:border-[#5DD62C] ring-1 ring-transparent hover:ring-[#5DD62C]/30 transition-all' : ''
-                          }`}
+                        className="flora-card flora-card-interactive p-4 shadow-xs flex flex-col justify-between min-h-24"
                       >
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-bold text-[#50645F] uppercase tracking-wider">

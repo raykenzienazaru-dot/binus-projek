@@ -19,8 +19,13 @@ const header = Buffer.from(
 const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
 const body = Buffer.concat([header, dummyJpeg, footer]);
 
-console.log('Sending multipart request to https://tes-tflite-production.up.railway.app/api/v1/predict ...');
-const res = await fetch('https://tes-tflite-production.up.railway.app/api/v1/predict', {
+console.log('Checking health at https://be-binus-production.up.railway.app/health ...');
+const healthRes = await fetch('https://be-binus-production.up.railway.app/health');
+console.log('Health HTTP Status:', healthRes.status);
+console.log('Health JSON:', JSON.stringify(await healthRes.json(), null, 2));
+
+console.log('Sending multipart request to https://be-binus-production.up.railway.app/api/v1/predict ...');
+const res = await fetch('https://be-binus-production.up.railway.app/api/v1/predict', {
   method: 'POST',
   headers: {
     'Content-Type': `multipart/form-data; boundary=${boundary}`,

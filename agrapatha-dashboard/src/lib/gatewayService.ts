@@ -30,6 +30,20 @@ export interface GatewayTelemetryPayload {
   imageReady: boolean | null;
   freshness: 'FRESH' | 'STALE';
   timestamp: number;
+  // Optional 4-DoF Robot Arm, ToF, 5-ch Flame & 4-Condition Action Fields
+  distanceMm?: number | null;
+  zone?: number | null;
+  pumpStatus?: boolean | null;
+  pumpLockout?: boolean | null;
+  ventilationActive?: boolean | null;
+  gasAlarmActive?: boolean | null;
+  flameChannels?: number[] | null;
+  servoAngles?: number[] | null;
+  systemState?: string | null;
+  envCondition?: string | null;
+  actionCommand?: string | null;
+  commandLabel?: string | null;
+  commandPayload?: unknown;
 }
 
 export type GatewayConnectionStatus = 'connecting' | 'connected' | 'error' | 'closed';
@@ -139,31 +153,79 @@ export function parseGatewayTelemetry(data: unknown): GatewayTelemetryPayload | 
     return null;
   }
 
-  return {
-    temp: getNumOrNull('temp'),
-    rh: getNumOrNull('rh'),
-    soilMoisture: getNumOrNull('soilMoisture'),
-    soilRaw: getNumOrNull('soilRaw'),
+  const result: GatewayTelemetryPayload = {
+    temp: getNumOrNull('temp') ?? getNumOrNull('temperature'),
+    rh: getNumOrNull('rh') ?? getNumOrNull('humidity'),
+    soilMoisture: getNumOrNull('soilMoisture') ?? getNumOrNull('soil_moisture'),
+    soilRaw: getNumOrNull('soilRaw') ?? getNumOrNull('soil_raw'),
     rain: getNumOrNull('rain'),
-    rainStatus: getStrOrNull('rainStatus'),
+    rainStatus: getStrOrNull('rainStatus') ?? getStrOrNull('rain_status'),
     wind: getNumOrNull('wind'),
-    lightLux: getNumOrNull('lightLux'),
-    ldrRaw: getNumOrNull('ldrRaw'),
+    lightLux: getNumOrNull('lightLux') ?? getNumOrNull('light_lux'),
+    ldrRaw: getNumOrNull('ldrRaw') ?? getNumOrNull('ldr_raw'),
     gasPpm: getNumOrNull('gasPpm') ?? getNumOrNull('gas_ppm'),
     mq135Raw: getNumOrNull('mq135Raw') ?? getNumOrNull('mq135_raw') ?? getNumOrNull('mq135'),
     flameDetected: getNumOrNull('flameDetected') ?? getNumOrNull('flame_detected') ?? (getBoolOrNull('flameDetected') !== null ? (getBoolOrNull('flameDetected') ? 1 : 0) : null) ?? (getBoolOrNull('flame_detected') !== null ? (getBoolOrNull('flame_detected') ? 1 : 0) : null) ?? (getNumOrNull('flame') !== null ? (getNumOrNull('flame')! > 0 ? 1 : 0) : null),
     flameRaw: getNumOrNull('flameRaw') ?? getNumOrNull('flame_raw'),
-    motorState: getStrOrNull('motorState'),
-    motorDriver: getStrOrNull('motorDriver'),
-    limitLeft: getBoolOrNull('limitLeft'),
-    limitRight: getBoolOrNull('limitRight'),
-    uptimeSeconds: getNumOrNull('uptimeSeconds'),
-    visionPrediction: getStrOrNull('visionPrediction'),
-    visionConfidence: getNumOrNull('visionConfidence'),
-    imageReady: getBoolOrNull('imageReady'),
+    motorState: getStrOrNull('motorState') ?? getStrOrNull('motor_state'),
+    motorDriver: getStrOrNull('motorDriver') ?? getStrOrNull('motor_driver'),
+    limitLeft: getBoolOrNull('limitLeft') ?? getBoolOrNull('limit_left'),
+    limitRight: getBoolOrNull('limitRight') ?? getBoolOrNull('limit_right'),
+    uptimeSeconds: getNumOrNull('uptimeSeconds') ?? getNumOrNull('uptime_seconds'),
+    visionPrediction: getStrOrNull('visionPrediction') ?? getStrOrNull('vision_prediction'),
+    visionConfidence: getNumOrNull('visionConfidence') ?? getNumOrNull('vision_confidence'),
+    imageReady: getBoolOrNull('imageReady') ?? getBoolOrNull('image_ready'),
     freshness: rawFreshness,
     timestamp,
   };
+
+  // Optional Robot Arm & 4-Condition fields (only attached when present so legacy exact-match contracts remain unchanged)
+  const distanceMm = getNumOrNull('distanceMm') ?? getNumOrNull('distance_mm');
+  if (distanceMm !== null) result.distanceMm = distanceMm;
+
+  const zone = getNumOrNull('zone');
+  if (zone !== null) result.zone = zone;
+
+  const pumpStatus = getBoolOrNull('pumpStatus') ?? getBoolOrNull('pump_status');
+  if (pumpStatus !== null) result.pumpStatus = pumpStatus;
+
+  const pumpLockout = getBoolOrNull('pumpLockout') ?? getBoolOrNull('pump_lockout');
+  if (pumpLockout !== null) result.pumpLockout = pumpLockout;
+
+  const ventilationActive = getBoolOrNull('ventilationActive') ?? getBoolOrNull('ventilation_active');
+  if (ventilationActive !== null) result.ventilationActive = ventilationActive;
+
+  const gasAlarmActive = getBoolOrNull('gasAlarmActive') ?? getBoolOrNull('gas_alarm_active');
+  if (gasAlarmActive !== null) result.gasAlarmActive = gasAlarmActive;
+
+  const rawFlameCh = rec.flameChannels ?? rec.flame_ch;
+  if (Array.isArray(rawFlameCh) && rawFlameCh.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    result.flameChannels = rawFlameCh.slice(0, 5);
+  }
+
+  const rawServoAngles = rec.servoAngles ?? rec.servo_angles;
+  if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    result.servoAngles = rawServoAngles.slice(0, 4);
+  }
+
+  const systemState = getStrOrNull('systemState') ?? getStrOrNull('system_state');
+  if (systemState !== null) result.systemState = systemState;
+
+  const envCondition = getStrOrNull('envCondition') ?? getStrOrNull('env_condition');
+  if (envCondition !== null) result.envCondition = envCondition;
+
+  const actionCommand = getStrOrNull('actionCommand') ?? getStrOrNull('action_command');
+  if (actionCommand !== null) result.actionCommand = actionCommand;
+
+  const commandLabel = getStrOrNull('commandLabel') ?? getStrOrNull('command_label');
+  if (commandLabel !== null) result.commandLabel = commandLabel;
+
+  const commandPayload = rec.commandPayload ?? rec.command_payload;
+  if (commandPayload !== undefined && commandPayload !== null) {
+    result.commandPayload = commandPayload;
+  }
+
+  return result;
 }
 
 /**

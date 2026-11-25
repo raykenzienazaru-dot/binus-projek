@@ -1,63 +1,59 @@
 # binus-projek
 
-## AGRAPATHA — Autonomous Forest Fire & Botanical Observation System
+## AGRAPATHA — Autonomous Forest Fire & Microclimate Robotic System
 
-AGRAPATHA is an intelligent environmental monitoring and early warning system combining Edge-AI C kernels (`model_hazard.h`, `grenvis_sensor_model.h`), Canadian Forest Fire Weather Index (FWI) telemetry, macro-regional BMKG forecast integration, and an optical computer vision subsystem with manual browser fallback.
+AGRAPATHA is an intelligent environmental monitoring, wildfire detection, and autonomous robotic mitigation system combining Edge-AI C kernels (`model_hazard.h`, `grenvis_sensor_model.h`), Canadian Forest Fire Weather Index (FWI) telemetry, direct EMQX Cloud MQTT over TLS (`8883`) & WebSocket (`8084`), a 4-DoF robotic arm + linear carriage with VL53L0X ToF ranging, and MobileNetV2 TFLite visual fire/smoke inference hosted on Railway.
 
 ---
 
 ## 1. System Architecture
 
 ```
-                    ┌──────────────────────────────────────────────┐
-                    │          AGRAPATHA Web Dashboard            │
-                    │         (React 19 + TypeScript + Vite)       │
-                    └───────┬──────────────┬──────────────┬────────┘
-                            │              │              │
-             ┌──────────────┘              │              └──────────────┐
-             ▼                             ▼                             ▼
-┌────────────────────────┐   ┌───────────────────────────┐   ┌─────────────────────────┐
-│   Wildfire Vision API  │   │  Leaf Disease Vision API  │   │   BMKG Weather Gateway  │
-│   (FastAPI on Railway) │   │     (Future Deployment)   │   │     (Node.js Service)   │
-│   MobileNetV2 TFLite   │   │  MobileNetV3Large TFLite  │   │   Proxy & Cache Layer   │
-└────────────────────────┘   └───────────────────────────┘   └─────────────────────────┘
+                    ┌────────────────────────────────────────────────────────┐
+                    │                AGRAPATHA Web Dashboard                 │
+                    │        (React 19 + TypeScript + Vite + WSS :8084)      │
+                    └───────┬──────────────────────────┬─────────────────────┘
+                            │                          │
+             ┌──────────────┘                          └──────────────┐
+             ▼                                                        ▼
+┌──────────────────────────────┐                        ┌──────────────────────────────┐
+│   Wildfire Vision API        │                        │   EMQX Cloud Serverless      │
+│   (FastAPI on Railway)       │                        │   MQTTS :8883 / WSS :8084    │
+│   be-binus-production        │                        │   2-Way Telemetry & Commands │
+│   MobileNetV2 TFLite         │                        └──────────────┬───────────────┘
+└──────────────▲───────────────┘                                       │
+               │                                                       ▼
+┌──────────────┴───────────────┐   ESP-NOW (CH 0)      ┌──────────────────────────────┐
+│   ESP32-CAM Node             │◄─────────────────────►│   NodeMCU ESP32-S Main Node  │
+│   AI-Thinker OV2640          │                       │   DHT22, Soil, MQ-135,       │
+│   POST /predict/fire         │                       │   5-Ch Flame, VL53L0X ToF,   │
+└──────────────────────────────┘                       │   4-DoF Arm, Slider & Pump   │
+                                                       └──────────────────────────────┘
 ```
 
-1. **Dashboard Frontend (`agrapatha-dashboard/`)**: Single-page application providing real-time telemetry gauges, interactive Kaggle C-header simulator, weather warnings, actuator rail controls, and optical camera stream diagnostics.
-2. **Vision Subsystem**: Dual-domain classification supporting Wildfire hotspot verification and Plant Leaf Pathology diagnosis.
-3. **BMKG Gateway (`backend/`)**: Zero-dependency Node.js HTTP reverse-proxy caching official BMKG regional forecasts and extreme weather alerts.
+1. **Dashboard Frontend (`agrapatha-dashboard/`)**: Single-page application providing real-time telemetry gauges, Edge AI C-header analysis, camera capture/gateway frame diagnostics, live EMQX WSS (`:8084`) robot arm & slider control (Fail-Closed Safety Gate), and executable 4-condition mitigation actions (`KERING`, `BASAH`, `KEBAKARAN`, `GAS_BERACUN`).
+2. **Wildfire Vision API (`be-binus` on Railway)**: FastAPI + `ai-edge-litert` MobileNetV2 TFLite service deployed at `https://be-binus-production.up.railway.app`, serving both the web dashboard and `ESP32-CAM`.
+3. **NodeMCU ESP32-S Main Firmware (`firmware/esp32_sensor_main/`)**: Direct-GPIO robotic controller managing DHT22, Capacitive Soil Moisture, MQ-135 Gas, 5-channel flame array, VL53L0X ToF sensor, L298N 3-zone linear slider, pump relay with agricultural lockout/watchdog, 4-DoF servo arm, and bidirectional EMQX MQTTS (`8883`) telemetry/commands.
 4. **Edge AI Kernels**: C-header machine learning models (`model_hazard.h` Random Forest and `grenvis_sensor_model.h` Neural Network) executed directly in memory for instant decision support.
 
 ---
 
-## 2. Vision Subsystem & Dual-Domain Inference
+## 2. Wildfire Vision Subsystem
 
-The `#cameraCapture` section provides real-time visual inspection with a dual-domain selector:
+The `#cameraCapture` section and `ESP32-CAM` node connect directly to the deployed Railway inference backend:
 
-### A. Wildfire Classification Domain (Active & Verified)
-- **Deployed Backend:** `https://tes-tflite-production.up.railway.app`
-- **Health Endpoint:** `GET /api/v1/health`
-- **Prediction Endpoint:** `POST /api/v1/predict` (multipart `file`)
+### Wildfire Classification (`Non-Fire` / `Smoke` / `Fire`)
+- **Deployed Backend:** `https://be-binus-production.up.railway.app`
+- **Health Endpoints:** `GET /health` & `GET /api/v1/health`
+- **Prediction Endpoints:** `POST /api/v1/predict` (Dashboard) & `POST /predict/fire` / `POST /predict` (ESP32-CAM)
 - **Model Architecture:** MobileNetV2 with custom dense classifier head (`agrapatha_vision_mobilenetv2.tflite`, 2.68 MB)
 - **Runtime:** `ai-edge-litert` (Python 3.11)
 - **Input Dimensions:** `[1, 224, 224, 3]`, Float32, normalized `[-1.0, 1.0]`
 - **Verified Classes:**
-  1. `Non-Fire` (Healthy canopy)
-  2. `Smoke` (Smoke plume)
-  3. `Fire` (Surface fire)
-- **Frontend Configuration:** Configurable via `VITE_VISION_API_BASE_URL` (defaults to verified Railway URL).
-
-### B. Leaf Disease Classification Domain (Prepared & Isolated)
-- **Candidate Model:** PlanTech-AI (`AhmAshraf1/PlanTech-AI`, MIT License)
-- **Model Architecture:** MobileNetV3Large fine-tuned on PlantDoc dataset (`plant_model_3Classes.tflite`, 12.89 MB)
-- **Input Dimensions:** `[1, 224, 224, 3]`, Float32, normalized via MobileNetV3 preprocess input `[-1.0, 1.0]`
-- **Target Endpoint:** `POST /api/v1/leaf/predict` (multipart `file`)
-- **Verified Output Class Order & Label Mapping:**
-  - Index 0: `Healthy` → `Healthy`
-  - Index 1: `Powdery` → `Powdery Mildew`
-  - Index 2: `Rust` → `Leaf Rust`
-- **Frontend Configuration:** Configurable via `VITE_LEAF_API_BASE_URL`.
-- **Strict Isolation:** When unconfigured, the dashboard displays an informative Indonesian status banner. It **never** sends leaf images to the wildfire API and never fabricates mock predictions.
+  1. `Non-Fire` / `SAFE` (Healthy canopy)
+  2. `Smoke` / `SMOKE` (Smoke plume)
+  3. `Fire` / `FIRE` (Surface fire)
+- **Frontend Configuration:** Configurable via `VITE_VISION_API_BASE_URL` (defaults to `https://be-binus-production.up.railway.app`).
 
 ---
 
@@ -102,7 +98,7 @@ Proyek ini menggunakan arsitektur **Single Source of Truth (`src/config/iotConfi
 | `Browser Port (WSS)` | `8084` | Port WebSocket aman untuk Web Dashboard |
 | `Hardware Port (TLS)` | `8883` | Port MQTTS TCP aman untuk ESP32 |
 | `Username / Password` | `agrapatha` / `agrapatha123` | Kredensial autentikasi EMQX Cloud |
-| `Wildfire API URL` | `https://tes-tflite-production.up.railway.app` | Backend FastAPI MobileNetV2 |
+| `Wildfire API URL` | `https://be-binus-production.up.railway.app` | Backend FastAPI MobileNetV2 (be-binus) |
 | `Topic Telemetry` | `agrapatha/telemetry` & `grenvis/sensor/data` | Topik stream data sensor |
 | `Topic Control` | `agrapatha/commands` & `grenvis/device/control` | Topik kendali motor rel & trigger foto |
 

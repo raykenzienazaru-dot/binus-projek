@@ -24,6 +24,20 @@ export interface PublicTelemetryPayload {
   imageReady: boolean | null;
   freshness: 'FRESH' | 'STALE';
   timestamp: number;
+  // Optional 4-DoF Robot Arm, ToF, 5-ch Flame & 4-Condition Action Fields
+  distanceMm?: number | null;
+  zone?: number | null;
+  pumpStatus?: boolean | null;
+  pumpLockout?: boolean | null;
+  ventilationActive?: boolean | null;
+  gasAlarmActive?: boolean | null;
+  flameChannels?: number[] | null;
+  servoAngles?: number[] | null;
+  systemState?: string | null;
+  envCondition?: string | null;
+  actionCommand?: string | null;
+  commandLabel?: string | null;
+  commandPayload?: unknown;
 }
 
 export interface TelemetryHubOptions {
@@ -116,7 +130,7 @@ export function sanitizeTelemetry(raw: unknown, nowMs: number, lastReceivedMs: n
 
   const isFresh = nowMs - lastReceivedMs <= 10000;
 
-  return {
+  const payload: PublicTelemetryPayload = {
     temp,
     rh,
     soilMoisture,
@@ -141,6 +155,54 @@ export function sanitizeTelemetry(raw: unknown, nowMs: number, lastReceivedMs: n
     freshness: isFresh ? 'FRESH' : 'STALE',
     timestamp: nowMs,
   };
+
+  // Conditionally project new robot arm & 4-condition command fields if present
+  const distanceMm = getNum('distanceMm') ?? getNum('distance_mm');
+  if (distanceMm !== null) payload.distanceMm = distanceMm;
+
+  const zone = getNum('zone');
+  if (zone !== null) payload.zone = zone;
+
+  const pumpStatus = getBool('pumpStatus') ?? getBool('pump_status');
+  if (pumpStatus !== null) payload.pumpStatus = pumpStatus;
+
+  const pumpLockout = getBool('pumpLockout') ?? getBool('pump_lockout');
+  if (pumpLockout !== null) payload.pumpLockout = pumpLockout;
+
+  const ventilationActive = getBool('ventilationActive') ?? getBool('ventilation_active');
+  if (ventilationActive !== null) payload.ventilationActive = ventilationActive;
+
+  const gasAlarmActive = getBool('gasAlarmActive') ?? getBool('gas_alarm_active');
+  if (gasAlarmActive !== null) payload.gasAlarmActive = gasAlarmActive;
+
+  const rawFlameCh = data.flameChannels ?? data.flame_ch;
+  if (Array.isArray(rawFlameCh) && rawFlameCh.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    payload.flameChannels = rawFlameCh.slice(0, 5);
+  }
+
+  const rawServoAngles = data.servoAngles ?? data.servo_angles;
+  if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    payload.servoAngles = rawServoAngles.slice(0, 4);
+  }
+
+  const systemState = getStr('systemState') ?? getStr('system_state');
+  if (systemState !== null) payload.systemState = systemState;
+
+  const envCondition = getStr('envCondition') ?? getStr('env_condition');
+  if (envCondition !== null) payload.envCondition = envCondition;
+
+  const actionCommand = getStr('actionCommand') ?? getStr('action_command');
+  if (actionCommand !== null) payload.actionCommand = actionCommand;
+
+  const commandLabel = getStr('commandLabel') ?? getStr('command_label');
+  if (commandLabel !== null) payload.commandLabel = commandLabel;
+
+  const commandPayload = data.commandPayload ?? data.command_payload;
+  if (commandPayload !== undefined && commandPayload !== null) {
+    payload.commandPayload = commandPayload;
+  }
+
+  return payload;
 }
 
 export class TelemetryHub {

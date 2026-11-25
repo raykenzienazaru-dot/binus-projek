@@ -4,17 +4,20 @@
  * Unit: NodeMCU ESP32-S (Direct GPIO Servo - 100% SENSOR FISIK ROBOT)
  * ==============================================================================
  * SISTEM PENGAMBIL KEPUTUSAN 4 KONDISI MURNI SENSOR ONBOARD ROBOT:
- * 1. KERING      : Soil < 35% & Suhu > 32°C -> PERINTAH: Siram Akar & Semprot Misting Kanopi.
- * 2. BASAH       : Soil > 80% (Jenuh Air)    -> PERINTAH: Kunci Mati Pompa & Parkir Aman Arm ke Home.
- * 3. KEBAKARAN   : Flame + MobileNetV2 FIRE  -> PERINTAH: Semprot Pemadam 4s & Evakuasi Kereta.
- * 4. GAS BERACUN : MQ-135 > 2200 (Asap/Gas)  -> PERINTAH: Nyalakan Aerasi/Exhaust & Alarm.
+ * 1. KERING      : Soil < 35% (& Suhu > 32°C) -> PERINTAH: Siram Akar & Semprot Misting.
+ * 2. BASAH       : Soil > 80% (Jenuh Air)      -> PERINTAH: Kunci Mati Pompa & Parkir Arm.
+ * 3. KEBAKARAN   : Flame + MobileNetV2 FIRE    -> PERINTAH: Semprot Pemadam & Evakuasi Rel.
+ * 4. GAS BERACUN : MQ-135 > 2200 / Asap SMOKE  -> PERINTAH: Nyalakan Aerasi & Alarm Gas.
  *
- * KOMUNIKASI & AKTUATOR:
- * - 4 Servo Langsung ke GPIO (13, 14, 15, 5) via ESP32Servo.
- * - Sensor Jarak ToF VL53L0X pada ujung Nozzle (I2C SDA 21, SCL 22, Alamat 0x29).
- * - Linear Slider 3-Zona via L298N (IN1: 16, IN2: 17) + Limit SW (18, 19).
- * - Pompa Air Relay (GPIO 23).
- * - Dual-Way MQTT: Menerima & Mengeksekusi PERINTAH AKSI Langsung dari Dashboard.
+ * KOMUNIKASI, KEAMANAN & AKTUATOR:
+ * - Wi-Fi Auto-Connect + Watchdog (SSID: "." | Pass: "01020304").
+ * - EMQX Cloud TLS Port 8883 (q2277711.ala.asia-southeast1.emqxsl.com).
+ * - 4 Servo Langsung ke GPIO (13, 14, 15, 5) via ESP32Servo (Catu Daya Eksternal 5V-6V 3A).
+ * - Sensor Jarak ToF VL53L0X (I2C SDA 21, SCL 22, Alamat 0x29) + Health Check.
+ * - Moving Average Filter 5-Sample pada Soil Moisture & MQ-135 + DHT22 Interval >= 2000ms.
+ * - Linear Slider 3-Zona L298N (IN1: 16, IN2: 17) + Limit SW (18, 19) + Travel Watchdog.
+ * - Pompa Air Relay (GPIO 23, Active LOW, Glitch-Free Init + Watchdog Timer).
+ * - Dual-Way MQTT (`agrapatha/telemetry` & `agrapatha/commands`) + ESP-NOW ke ESP32-CAM.
  * ==============================================================================
  */
 
@@ -31,13 +34,13 @@
 #include <ArduinoJson.h>
 
 // ======================================================
-// 1. PIN DEFINITIONS
+// 1. PIN DEFINITIONS (NODEMCU ESP32-S / WROOM-32)
 // ======================================================
 #define DHT_PIN              4    // DHT22 Data
 #define DHT_TYPE             DHT22
 
-#define SOIL_ANALOG_PIN      34   // ADC1_CH6 (Capacitive Soil Moisture v1.2)
-#define MQ135_ANALOG_PIN     35   // ADC1_CH7 (MQ-135 Gas/Smoke Analog)
+#define SOIL_ANALOG_PIN      34   // ADC1_CH6 (Capacitive Soil Moisture v1.2, Input Only)
+#define MQ135_ANALOG_PIN     35   // ADC1_CH7 (MQ-135 Gas/Smoke via Voltage Divider <= 3.3V)
 
 // 4-DoF Robot Arm Servos (Langsung ke Pin GPIO ESP32)
 #define SERVO_BASE_PIN       13   // Servo 1: Rotasi Basis (Yaw)
@@ -110,36 +113,42 @@ const char* TOPIC_TELEMETRY = "agrapatha/telemetry";
 const char* TOPIC_COMMANDS  = "agrapatha/commands"; // Jalur Menerima Perintah dari Dashboard
 
 // ======================================================
-// 3. AMBANG BATAS 4 KONDISI SENSOR ONBOARD
+// 3. AMBANG BATAS 4 KONDISI SENSOR ONBOARD & WATCHDOG
 // ======================================================
-#define SOIL_CALIB_DRY         3200
-#define SOIL_CALIB_WET         1400
+#define SOIL_CALIB_DRY          3200
+#define SOIL_CALIB_WET          1400
 
-#define THRESH_SOIL_DRY        35.0   // < 35%: KONDISI KERING
-#define THRESH_SOIL_WET        80.0   // > 80%: KONDISI BASAH (Jenuh Air)
-#define THRESH_SOIL_TARGET     60.0   // Target Ideal Kelembapan Tanah
+#define THRESH_SOIL_DRY         35.0   // < 35%: KONDISI KERING
+#define THRESH_SOIL_WET         80.0   // > 80%: KONDISI BASAH (Jenuh Air)
+#define THRESH_SOIL_TARGET      60.0   // Target Ideal Kelembapan Tanah
 
-#define THRESH_MQ135_TOXIC     2200   // > 2200 ADC: KONDISI GAS BERACUN / ASAP
+#define THRESH_MQ135_TOXIC      2200   // > 2200 ADC: KONDISI GAS BERACUN / ASAP
 
-#define VL53L0X_MIN_SAFE_MM    120    // Batas aman minimum nozzle ke api
-#define VL53L0X_MAX_SUPPR_MM   380    // Batas efektif semprotan nozzle
-#define SUPPRESSION_DURATION_MS 4000  // Durasi semprot pemadam per siklus
+#define VL53L0X_MIN_SAFE_MM     120    // Batas aman minimum nozzle ke api
+#define VL53L0X_MAX_SUPPR_MM    380    // Batas efektif semprotan nozzle
+#define SUPPRESSION_DURATION_MS 4000   // Durasi semprot pemadam per siklus
 
-#define IRRIG_MAX_DURATION_MS  12000  // Maksimal pompa siram aktif
-#define IRRIG_COOLDOWN_MS      60000  // Cooldown antar penyiraman
+#define IRRIG_MAX_DURATION_MS   12000  // Maksimal pompa siram aktif (watchdog fail-safe)
+#define IRRIG_COOLDOWN_MS       60000  // Cooldown antar penyiraman otomatis
+#define SLIDER_MAX_TRAVEL_MS    10000  // Watchdog maksimal waktu tempuh rel
+
+#define DHT_READ_INTERVAL_MS    2200   // Minimum 2 detik sesuai spesifikasi sensor DHT22
+#define WIFI_RETRY_INTERVAL_MS  15000
+#define MQTT_RETRY_INTERVAL_MS  4000
 
 // ======================================================
-// 4. PROTOKOL ESP-NOW DARI ESP32-CAM
+// 4. PROTOKOL ESP-NOW DARI/KE ESP32-CAM
 // ======================================================
 const uint8_t ESP32_CAM_MAC[]  = { 0xF8, 0xB3, 0xB7, 0xA6, 0xF3, 0x9C };
 const uint8_t ESP32_MAIN_MAC[] = { 0x8C, 0xAA, 0xB5, 0x37, 0x71, 0x18 };
 
 #define PACKET_VISION_RESULT   1
+#define PACKET_CAPTURE_REQUEST 5
 
 typedef struct __attribute__((packed)) {
   uint8_t  packetType;
   uint32_t scanNumber;
-  char     visionClass[16];   // "FIRE", "SMOKE", "SAFE"
+  char     visionClass[16];   // "FIRE", "SMOKE", "SAFE", "Unknown"
   float    confidence;
   float    fireScore;
   float    smokeScore;
@@ -187,12 +196,14 @@ FireSearchStage currentFireStage = STAGE_SERVO1_YAW;
 // Sensor Readings
 float currentTemp = 0.0;
 float currentHumidity = 0.0;
+bool dhtHasValidReading = false;
 int rawSoil = 0;
 float soilMoisturePct = 0.0;
 int rawMQ135 = 0;
 bool flameCh[5] = {false, false, false, false, false};
 int activeFlameCount = 0;
 uint16_t targetDistanceMm = 9999;
+bool vl53l0xReady = false;
 bool distanceSensorValid = false;
 
 // AI Vision
@@ -204,39 +215,74 @@ float aiSafeScore = 1.0;
 unsigned long lastAiResultTime = 0;
 bool cameraOnline = false;
 
-// Slider
+// Slider Non-Blocking Tracking
 int currentZone = 1;
 int zoneScanCycles = 0;
+bool sliderTransitionActive = false;
+bool sliderManualActive = false;
+char motorStateStr[16] = "STOPPED";
 unsigned long sliderMoveStartTime = 0;
+unsigned long sliderManualEndTime = 0;
 const unsigned long SLIDER_ZONE2_TRAVEL_MS = 2500;
 
-// Servo Angles
+// Servo Angles & Non-Blocking Scan Step
 int angleBase = 90;
 int angleShoulder = 45;
 int angleElbow = 45;
 int angleNozzle = 90;
+unsigned long lastFireStageStepTime = 0;
 
 // Timers & Flags
 unsigned long lastSensorReadTime = 0;
+unsigned long lastDhtReadTime = 0;
+unsigned long lastVl53RetryTime = 0;
 unsigned long lastMqttPubTime = 0;
+unsigned long lastMqttConnAttempt = 0;
+unsigned long lastWifiAttempt = 0;
 unsigned long pumpStartTime = 0;
+unsigned long commandPumpEndTime = 0;
 unsigned long lastIrrigEndTime = 0;
 bool pumpActive = false;
 bool pumpLockout = false;
+bool ventilationActive = false;
+bool gasAlarmActive = false;
 bool emergencyStopTriggered = false;
 
 // ======================================================
 // STRUKTUR PERINTAH OPERASIONAL (MURNI SENSOR ROBOT)
 // ======================================================
-char envCondition[24]        = "NORMAL";       // "KERING", "BASAH", "KEBAKARAN", "GAS_BERACUN", "NORMAL"
+char envCondition[24]        = "NORMAL";       // "KERING", "BASAH", "KEBAKARAN", "GAS_BERACUN", "NORMAL", "FAULT"
 char actionCommand[32]       = "CMD_IDLE";
 char commandButtonLabel[48]  = "Sistem Siap";
 char commandPayload[96]      = "{\"cmd\":\"NONE\"}";
 
 // ======================================================
-// 6. HELPER KENDALI FISIK
+// 6. HELPER KENDALI FISIK & SAFETY INTERLOCK
 // ======================================================
-void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDelay = 15) {
+const char* getSystemStateLabel(SystemState st) {
+  switch (st) {
+    case STATE_INIT:               return "INIT";
+    case STATE_HOMING:             return "HOMING";
+    case STATE_SCANNING_ZONES:     return "SCANNING";
+    case STATE_IRRIGATING:         return "IRRIGATING";
+    case STATE_FIRE_MODE_STAGED:   return "FIRE_STAGED";
+    case STATE_SUPPRESSION_ACTIVE: return "SUPPRESSING";
+    case STATE_ALARM_FAULT:        return "ALARM_FAULT";
+    case STATE_EMERGENCY_STOP:     return "E_STOP";
+    default:                       return "UNKNOWN";
+  }
+}
+
+int readFilteredAdc(uint8_t pin, uint8_t samples = 5) {
+  long sum = 0;
+  for (uint8_t i = 0; i < samples; i++) {
+    sum += analogRead(pin);
+    delayMicroseconds(200);
+  }
+  return (int)(sum / samples);
+}
+
+void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDelay = 12) {
   targetAngle = constrain(targetAngle, 0, 180);
   if (currentAngle == targetAngle) return;
   int step = (targetAngle > currentAngle) ? 1 : -1;
@@ -251,44 +297,68 @@ void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDel
 void stopSlider() {
   digitalWrite(MOTOR_IN1, LOW);
   digitalWrite(MOTOR_IN2, LOW);
+  strncpy(motorStateStr, "STOPPED", sizeof(motorStateStr));
+  sliderManualActive = false;
 }
 
-void moveSliderLeft() {
-  if (digitalRead(LIMIT_SW_LEFT) == LOW) {
+bool moveSliderLeft() {
+  if (emergencyStopTriggered || digitalRead(LIMIT_SW_LEFT) == LOW) {
     stopSlider();
-    return;
+    return false;
   }
   digitalWrite(MOTOR_IN1, HIGH);
   digitalWrite(MOTOR_IN2, LOW);
+  strncpy(motorStateStr, "LEFT", sizeof(motorStateStr));
+  return true;
 }
 
-void moveSliderRight() {
-  if (digitalRead(LIMIT_SW_RIGHT) == LOW) {
+bool moveSliderRight() {
+  if (emergencyStopTriggered || digitalRead(LIMIT_SW_RIGHT) == LOW) {
     stopSlider();
-    return;
+    return false;
   }
   digitalWrite(MOTOR_IN1, LOW);
   digitalWrite(MOTOR_IN2, HIGH);
+  strncpy(motorStateStr, "RIGHT", sizeof(motorStateStr));
+  return true;
 }
 
-void setPump(bool state) {
+void setPump(bool state, bool bypassLockoutForFire = false) {
   if (state) {
-    if (!emergencyStopTriggered && !pumpLockout) {
+    if (!emergencyStopTriggered && (!pumpLockout || bypassLockoutForFire)) {
       digitalWrite(PUMP_RELAY_PIN, RELAY_ACTIVE);
+      if (!pumpActive) {
+        pumpStartTime = millis();
+      }
       pumpActive = true;
-      pumpStartTime = millis();
+    } else {
+      digitalWrite(PUMP_RELAY_PIN, RELAY_DEACTIVE);
+      pumpActive = false;
     }
   } else {
     digitalWrite(PUMP_RELAY_PIN, RELAY_DEACTIVE);
     pumpActive = false;
+    commandPumpEndTime = 0;
   }
 }
 
 void setEnvironmentalCommand(const char* cond, const char* cmdCode, const char* btnLabel, const char* payload) {
   strncpy(envCondition, cond, sizeof(envCondition) - 1);
+  envCondition[sizeof(envCondition) - 1] = '\0';
   strncpy(actionCommand, cmdCode, sizeof(actionCommand) - 1);
+  actionCommand[sizeof(actionCommand) - 1] = '\0';
   strncpy(commandButtonLabel, btnLabel, sizeof(commandButtonLabel) - 1);
+  commandButtonLabel[sizeof(commandButtonLabel) - 1] = '\0';
   strncpy(commandPayload, payload, sizeof(commandPayload) - 1);
+  commandPayload[sizeof(commandPayload) - 1] = '\0';
+}
+
+void requestCameraCapture() {
+  uint8_t req = PACKET_CAPTURE_REQUEST;
+  esp_err_t err = esp_now_send(ESP32_CAM_MAC, &req, 1);
+  if (err == ESP_OK) {
+    Serial.println("[ESP-NOW] Permintaan capture frame dikirim ke ESP32-CAM.");
+  }
 }
 
 // ======================================================
@@ -297,18 +367,58 @@ void setEnvironmentalCommand(const char* cond, const char* cmdCode, const char* 
 void executeDashboardCommand(const char* cmdName, JsonObject& params) {
   Serial.printf("[DASHBOARD PERINTAH] Mengeksekusi: %s\n", cmdName);
 
+  // 0. Reset Darurat (Pemulihan dari Emergency Stop / Alarm Fault)
+  if (strcmp(cmdName, "CMD_RESET_EMERGENCY") == 0) {
+    emergencyStopTriggered = false;
+    pumpLockout = false;
+    gasAlarmActive = false;
+    setPump(false);
+    stopSlider();
+    currentState = STATE_HOMING;
+    sliderMoveStartTime = millis();
+    Serial.println("[EKSEKUSI] Emergency Stop & Lockout direset. Kembali ke Homing.");
+    return;
+  }
+
+  // 0b. Emergency Stop — Prioritas Tertinggi (Selalu dieksekusi instan)
+  if (strcmp(cmdName, "CMD_EMERGENCY_STOP") == 0) {
+    emergencyStopTriggered = true;
+    stopSlider();
+    setPump(false);
+    sliderTransitionActive = false;
+    currentState = STATE_EMERGENCY_STOP;
+    Serial.println("[EKSEKUSI] DARURAT: Semua aktuator dihentikan.");
+    return;
+  }
+
+  if (emergencyStopTriggered) {
+    Serial.println("[INTERLOCK] Perintah ditolak karena sistem dalam status E-STOP. Kirim CMD_RESET_EMERGENCY dahulu.");
+    return;
+  }
+
   // 1. Perintah Terkait Kondisi KERING
   if (strcmp(cmdName, "CMD_START_IRRIGATION") == 0) {
-    pumpLockout = false;
+    if (pumpLockout) {
+      Serial.println("[INTERLOCK] Pompa sedang terkunci (BASAH). Kirim CMD_UNLOCK_PUMP terlebih dahulu.");
+      return;
+    }
+    unsigned long dur = params["duration"] | IRRIG_MAX_DURATION_MS;
+    if (dur > IRRIG_MAX_DURATION_MS) dur = IRRIG_MAX_DURATION_MS;
     setPump(true);
-    Serial.println("[EKSEKUSI] Pompa irigasi dinyalakan.");
+    commandPumpEndTime = millis() + dur;
+    currentState = STATE_IRRIGATING;
+    Serial.printf("[EKSEKUSI] Pompa irigasi dinyalakan (%lu ms).\n", dur);
   }
   else if (strcmp(cmdName, "CMD_START_MISTING") == 0) {
-    pumpLockout = false;
+    if (pumpLockout) {
+      Serial.println("[INTERLOCK] Pompa terkunci (BASAH). Misting dibatalkan.");
+      return;
+    }
+    unsigned long dur = params["duration"] | 2500;
+    if (dur > 5000) dur = 5000;
     setPump(true);
-    delay(2000);
-    setPump(false);
-    Serial.println("[EKSEKUSI] Semprotan misting kanopi 2 detik selesai.");
+    commandPumpEndTime = millis() + dur;
+    Serial.printf("[EKSEKUSI] Semprotan misting kanopi (%lu ms).\n", dur);
   }
 
   // 2. Perintah Terkait Kondisi BASAH
@@ -317,60 +427,121 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     setPump(false);
     Serial.println("[EKSEKUSI] Pompa DIKUNCI MATI (PUMP LOCKOUT).");
   }
+  else if (strcmp(cmdName, "CMD_UNLOCK_PUMP") == 0) {
+    pumpLockout = false;
+    Serial.println("[EKSEKUSI] Kunci pompa (LOCKOUT) dibuka.");
+  }
   else if (strcmp(cmdName, "CMD_PARK_SAFE_ZONE") == 0) {
     stopSlider();
+    setPump(false);
     currentState = STATE_HOMING;
-    moveServoSmooth(servoShoulder, angleShoulder, 30, 15);
-    moveServoSmooth(servoElbow, angleElbow, 30, 15);
-    Serial.println("[EKSEKUSI] Arm & slider diparkir di Zona Aman.");
+    sliderMoveStartTime = millis();
+    moveServoSmooth(servoBase, angleBase, 90, 12);
+    moveServoSmooth(servoShoulder, angleShoulder, 30, 12);
+    moveServoSmooth(servoElbow, angleElbow, 30, 12);
+    moveServoSmooth(servoNozzle, angleNozzle, 90, 12);
+    Serial.println("[EKSEKUSI] Arm & slider diparkir di Zona Aman (Home).");
   }
 
   // 3. Perintah Terkait Kondisi KEBAKARAN
   else if (strcmp(cmdName, "CMD_FIRE_SUPPRESSION") == 0) {
     pumpLockout = false;
-    setPump(true);
-    delay(4000);
-    setPump(false);
-    Serial.println("[EKSEKUSI] Semprotan pemadaman api 4000 ms dieksekusi.");
+    unsigned long dur = params["duration"] | SUPPRESSION_DURATION_MS;
+    if (dur > 8000) dur = 8000;
+    setPump(true, true); // Bypass lockout pertanian khusus keadaan darurat api
+    commandPumpEndTime = millis() + dur;
+    currentState = STATE_SUPPRESSION_ACTIVE;
+    Serial.printf("[EKSEKUSI] Semprotan pemadaman api (%lu ms) diaktifkan.\n", dur);
+  }
+  else if (strcmp(cmdName, "CMD_FIRE_SCAN_START") == 0) {
+    stopSlider();
+    requestCameraCapture();
+    currentState = STATE_FIRE_MODE_STAGED;
+    currentFireStage = STAGE_SERVO1_YAW;
+    Serial.println("[EKSEKUSI] Pemindaian bertahap 4-DoF Arm menuju sumber api dimulai.");
   }
   else if (strcmp(cmdName, "CMD_EVACUATE_OPPOSITE") == 0) {
+    setPump(false);
+    sliderTransitionActive = false;
     moveSliderLeft();
-    delay(2000);
-    stopSlider();
-    Serial.println("[EKSEKUSI] Kereta rel dievakuasi menjauhi api.");
+    sliderManualActive = true;
+    sliderManualEndTime = millis() + 2500;
+    Serial.println("[EKSEKUSI] Kereta rel dievakuasi ke kiri menjauhi titik panas.");
   }
 
   // 4. Perintah Terkait Kondisi GAS BERACUN / ASAP
   else if (strcmp(cmdName, "CMD_VENTILATION_ACTIVE") == 0) {
-    Serial.println("[EKSEKUSI] Sirkulasi ventilasi/aerasi diaktifkan.");
+    ventilationActive = true;
+    // Arahkan nozzle & arm ke posisi ventilasi atas (45-60 derajat)
+    moveServoSmooth(servoNozzle, angleNozzle, 60, 12);
+    Serial.println("[EKSEKUSI] Mode ventilasi/aerasi & pembersihan gas aktif.");
   }
-  else if (strcmp(cmdName, "CMD_RETRACT_ARM") == 0) {
-    int step = params["step"] | 10;
-    int target = constrain(angleElbow - step, 20, 110);
-    moveServoSmooth(servoElbow, angleElbow, target, 15);
-  }
-  else if (strcmp(cmdName, "CMD_EMERGENCY_STOP") == 0) {
-    emergencyStopTriggered = true;
+  else if (strcmp(cmdName, "CMD_TRIGGER_GAS_ALARM") == 0) {
+    gasAlarmActive = true;
+    ventilationActive = true;
     stopSlider();
-    setPump(false);
-    currentState = STATE_EMERGENCY_STOP;
-    Serial.println("[EKSEKUSI] DARURAT: Semua sistem dihentikan.");
+    requestCameraCapture();
+    Serial.println("[EKSEKUSI] ALARM GAS BERACUN DIAKTIFKAN! Kamera memverifikasi asap.");
+  }
+
+  // 5. Kontrol Robot Arm, Slider Manual, & Trigger Kamera
+  else if (strcmp(cmdName, "CMD_RETRACT_ARM") == 0) {
+    int step = params["step"] | 15;
+    int targetElbow = constrain(angleElbow - step, 20, 120);
+    int targetShoulder = constrain(angleShoulder - step, 20, 120);
+    moveServoSmooth(servoElbow, angleElbow, targetElbow, 12);
+    moveServoSmooth(servoShoulder, angleShoulder, targetShoulder, 12);
+  }
+  else if (strcmp(cmdName, "CMD_SET_SERVO") == 0) {
+    if (params.containsKey("base"))     moveServoSmooth(servoBase, angleBase, params["base"], 12);
+    if (params.containsKey("shoulder")) moveServoSmooth(servoShoulder, angleShoulder, params["shoulder"], 12);
+    if (params.containsKey("elbow"))    moveServoSmooth(servoElbow, angleElbow, params["elbow"], 12);
+    if (params.containsKey("nozzle"))   moveServoSmooth(servoNozzle, angleNozzle, params["nozzle"], 12);
+    Serial.printf("[EKSEKUSI] Sudut Servo Diatur -> Base:%d Sh:%d El:%d Noz:%d\n",
+                  angleBase, angleShoulder, angleElbow, angleNozzle);
+  }
+  else if (strcmp(cmdName, "CMD_SLIDER_LEFT") == 0 || strcmp(cmdName, "L") == 0) {
+    sliderTransitionActive = false;
+    moveSliderLeft();
+    sliderManualActive = true;
+    sliderManualEndTime = millis() + (params["duration"] | 1500);
+  }
+  else if (strcmp(cmdName, "CMD_SLIDER_RIGHT") == 0 || strcmp(cmdName, "R") == 0) {
+    sliderTransitionActive = false;
+    moveSliderRight();
+    sliderManualActive = true;
+    sliderManualEndTime = millis() + (params["duration"] | 1500);
+  }
+  else if (strcmp(cmdName, "CMD_SLIDER_STOP") == 0 || strcmp(cmdName, "S") == 0) {
+    sliderTransitionActive = false;
+    stopSlider();
+  }
+  else if (strcmp(cmdName, "CMD_TRIGGER_CAPTURE") == 0 || strcmp(cmdName, "C") == 0) {
+    requestCameraCapture();
   }
 }
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
-  char msgBuf[256];
+  char msgBuf[384];
   if (length >= sizeof(msgBuf)) length = sizeof(msgBuf) - 1;
   memcpy(msgBuf, payload, length);
   msgBuf[length] = '\0';
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   DeserializationError err = deserializeJson(doc, msgBuf);
   if (!err) {
-    const char* cmd = doc["cmd"] | doc["command"] | "";
+    const char* cmd = doc["cmd"] | doc["command"] | doc["action"] | "";
     JsonObject params = doc["params"].as<JsonObject>();
     if (strlen(cmd) > 0) {
       executeDashboardCommand(cmd, params);
+    }
+  } else {
+    // Fallback untuk perintah teks mentah tunggal L/R/S/C
+    if (length == 1) {
+      char single[2] = { (char)payload[0], '\0' };
+      StaticJsonDocument<64> emptyDoc;
+      JsonObject emptyParams = emptyDoc.as<JsonObject>();
+      executeDashboardCommand(single, emptyParams);
     }
   }
 }
@@ -379,18 +550,26 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 // 8. SENSOR READING & LOGIKA 4 KONDISI SENSOR ONBOARD
 // ======================================================
 void readAllSensors() {
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
-  if (!isnan(t) && !isnan(h)) {
-    currentTemp = t;
-    currentHumidity = h;
+  unsigned long now = millis();
+
+  // DHT22 wajib jeda minimal 2 detik agar tidak mengembalikan NaN dan mengganggu PWM servo
+  if (now - lastDhtReadTime >= DHT_READ_INTERVAL_MS || !dhtHasValidReading) {
+    lastDhtReadTime = now;
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (!isnan(t) && !isnan(h) && t > -40.0 && t < 85.0 && h >= 0.0 && h <= 100.0) {
+      currentTemp = t;
+      currentHumidity = h;
+      dhtHasValidReading = true;
+    }
   }
 
-  rawSoil = analogRead(SOIL_ANALOG_PIN);
+  // Moving Average 5-Sample untuk kestabilan ADC ESP32
+  rawSoil = readFilteredAdc(SOIL_ANALOG_PIN, 5);
   float pct = ((float)(SOIL_CALIB_DRY - rawSoil) / (float)(SOIL_CALIB_DRY - SOIL_CALIB_WET)) * 100.0;
   soilMoisturePct = constrain(pct, 0.0, 100.0);
 
-  rawMQ135 = analogRead(MQ135_ANALOG_PIN);
+  rawMQ135 = readFilteredAdc(MQ135_ANALOG_PIN, 5);
 
   flameCh[0] = (digitalRead(FLAME_CH1_PIN) == FLAME_ACTIVE_STATE);
   flameCh[1] = (digitalRead(FLAME_CH2_PIN) == FLAME_ACTIVE_STATE);
@@ -403,25 +582,42 @@ void readAllSensors() {
     if (flameCh[i]) activeFlameCount++;
   }
 
-  VL53L0X_RangingMeasurementData_t measure;
-  vl53l0x.rangingTest(&measure, false);
-  if (measure.RangeStatus != 4) {
-    targetDistanceMm = measure.RangeMilliMeter;
-    distanceSensorValid = (targetDistanceMm >= 30 && targetDistanceMm <= 1200);
+  if (vl53l0xReady) {
+    VL53L0X_RangingMeasurementData_t measure;
+    vl53l0x.rangingTest(&measure, false);
+    if (measure.RangeStatus != 4) {
+      targetDistanceMm = measure.RangeMilliMeter;
+      distanceSensorValid = (targetDistanceMm >= 30 && targetDistanceMm <= 1200);
+    } else {
+      distanceSensorValid = false;
+      targetDistanceMm = 9999;
+    }
   } else {
     distanceSensorValid = false;
     targetDistanceMm = 9999;
+    if (now - lastVl53RetryTime >= 5000) {
+      lastVl53RetryTime = now;
+      vl53l0xReady = vl53l0x.begin();
+    }
   }
 
-  cameraOnline = (millis() - lastAiResultTime < 10000);
+  cameraOnline = (lastAiResultTime > 0 && (now - lastAiResultTime < 12000));
 
   // ====================================================
-  // MESIN PENENTU PERINTAH MURNI SENSOR ONBOARD ROBOT
+  // MESIN PENENTU PERINTAH MURNI 4 KONDISI SENSOR ONBOARD
   // ====================================================
-  bool isFire = (activeFlameCount > 0 || (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0 && aiConfidence >= 0.70));
-  bool isToxicGas = (rawMQ135 > THRESH_MQ135_TOXIC && !isFire);
-  bool isDry = (soilMoisturePct < THRESH_SOIL_DRY);
-  bool isWet = (soilMoisturePct > THRESH_SOIL_WET);
+  bool aiFire  = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0  && aiConfidence >= 0.70);
+  bool aiSmoke = (cameraOnline && strcmp(aiVisionClass, "SMOKE") == 0 && aiConfidence >= 0.70);
+
+  bool isFire     = (activeFlameCount > 0 || aiFire);
+  bool isToxicGas = ((rawMQ135 > THRESH_MQ135_TOXIC || aiSmoke) && !isFire);
+  bool isWet      = (soilMoisturePct > THRESH_SOIL_WET);
+  bool isDry      = (soilMoisturePct < THRESH_SOIL_DRY);
+
+  if (currentState == STATE_ALARM_FAULT || currentState == STATE_EMERGENCY_STOP) {
+    // Pertahankan status fault sampai reset operator
+    return;
+  }
 
   if (isFire) {
     // 1. KONDISI KEBAKARAN
@@ -429,7 +625,7 @@ void readAllSensors() {
       "KEBAKARAN",
       "CMD_FIRE_SUPPRESSION",
       "PERINTAH: SEMPROT PEMADAMAN DARURAT",
-      "{\"cmd\":\"CMD_FIRE_SUPPRESSION\",\"duration\":4000}"
+      "{\"cmd\":\"CMD_FIRE_SUPPRESSION\",\"params\":{\"duration\":4000}}"
     );
   }
   else if (isToxicGas) {
@@ -437,7 +633,7 @@ void readAllSensors() {
     setEnvironmentalCommand(
       "GAS_BERACUN",
       "CMD_VENTILATION_ACTIVE",
-      "PERINTAH: NYALAKAN AERASI/EXHAUST 100%",
+      "PERINTAH: NYALAKAN AERASI & ALARM GAS",
       "{\"cmd\":\"CMD_VENTILATION_ACTIVE\"}"
     );
   }
@@ -461,7 +657,11 @@ void readAllSensors() {
     );
   }
   else {
-    pumpLockout = false;
+    if (pumpLockout && soilMoisturePct <= (THRESH_SOIL_WET - 5.0)) {
+      pumpLockout = false; // Hysteresis 5% agar tidak berosilasi
+    }
+    ventilationActive = false;
+    gasAlarmActive = false;
     setEnvironmentalCommand(
       "NORMAL",
       "CMD_IDLE",
@@ -491,13 +691,17 @@ void onEspNowDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingDa
 }
 
 // ======================================================
-// 10. FIRE MODE STAGED
+// 10. FIRE MODE STAGED (NON-BLOCKING SERVO REACH + VL53L0X GUARD)
 // ======================================================
 void handleFireModeStaged() {
   if (pumpActive && currentState != STATE_SUPPRESSION_ACTIVE) {
     setPump(false);
   }
   stopSlider();
+
+  unsigned long now = millis();
+  if (now - lastFireStageStepTime < 25) return;
+  lastFireStageStepTime = now;
 
   switch (currentFireStage) {
     case STAGE_SERVO1_YAW: {
@@ -508,42 +712,59 @@ void handleFireModeStaged() {
       else if (flameCh[3]) targetYaw = 120;
       else if (flameCh[4]) targetYaw = 150;
 
-      moveServoSmooth(servoBase, angleBase, targetYaw, 20);
-      currentFireStage = STAGE_SERVO2_PITCH;
+      if (angleBase != targetYaw) {
+        angleBase += (targetYaw > angleBase) ? 2 : -2;
+        if (abs(targetYaw - angleBase) <= 2) angleBase = targetYaw;
+        servoBase.write(constrain(angleBase, 0, 180));
+      } else {
+        requestCameraCapture(); // Trigger foto saat menghadap sumber api
+        currentFireStage = STAGE_SERVO2_PITCH;
+      }
       break;
     }
 
     case STAGE_SERVO2_PITCH: {
-      moveServoSmooth(servoShoulder, angleShoulder, 70, 20);
-      currentFireStage = STAGE_SERVO3_REACH;
+      const int targetShoulder = 70;
+      if (angleShoulder != targetShoulder) {
+        angleShoulder += (targetShoulder > angleShoulder) ? 2 : -2;
+        if (abs(targetShoulder - angleShoulder) <= 2) angleShoulder = targetShoulder;
+        servoShoulder.write(constrain(angleShoulder, 0, 180));
+      } else {
+        currentFireStage = STAGE_SERVO3_REACH;
+      }
       break;
     }
 
     case STAGE_SERVO3_REACH: {
-      for (int a = angleElbow; a <= 75; a += 2) {
-        servoElbow.write(a);
-        angleElbow = a;
-        delay(30);
-        readAllSensors();
-
-        if (distanceSensorValid && targetDistanceMm < VL53L0X_MIN_SAFE_MM) {
-          break;
-        }
+      const int targetElbow = 75;
+      if (distanceSensorValid && targetDistanceMm < VL53L0X_MIN_SAFE_MM) {
+        // Jarak terlalu dekat, hentikan jangkauan segera demi keselamatan nozzle/kamera
+        currentFireStage = STAGE_SERVO4_NOZZLE;
+      } else if (angleElbow < targetElbow) {
+        angleElbow += 2;
+        if (angleElbow > targetElbow) angleElbow = targetElbow;
+        servoElbow.write(constrain(angleElbow, 0, 180));
+      } else {
+        currentFireStage = STAGE_SERVO4_NOZZLE;
       }
-      currentFireStage = STAGE_SERVO4_NOZZLE;
       break;
     }
 
     case STAGE_SERVO4_NOZZLE: {
-      moveServoSmooth(servoNozzle, angleNozzle, 90, 15);
-      currentFireStage = STAGE_VERIFY_DISTANCE;
+      const int targetNozzle = 90;
+      if (angleNozzle != targetNozzle) {
+        angleNozzle += (targetNozzle > angleNozzle) ? 2 : -2;
+        if (abs(targetNozzle - angleNozzle) <= 2) angleNozzle = targetNozzle;
+        servoNozzle.write(constrain(angleNozzle, 0, 180));
+      } else {
+        currentFireStage = STAGE_VERIFY_DISTANCE;
+      }
       break;
     }
 
     case STAGE_VERIFY_DISTANCE: {
-      readAllSensors();
-      bool distanceSafe = (distanceSensorValid && 
-                           targetDistanceMm >= VL53L0X_MIN_SAFE_MM && 
+      bool distanceSafe = (distanceSensorValid &&
+                           targetDistanceMm >= VL53L0X_MIN_SAFE_MM &&
                            targetDistanceMm <= VL53L0X_MAX_SUPPR_MM);
       bool visualConfirmed = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0 && aiConfidence >= 0.70);
       bool sensorCritical  = (activeFlameCount >= 2 && rawMQ135 > THRESH_MQ135_TOXIC);
@@ -551,9 +772,19 @@ void handleFireModeStaged() {
       if ((visualConfirmed || sensorCritical) && distanceSafe) {
         currentFireStage = STAGE_READY_SUPPRESS;
         currentState = STATE_SUPPRESSION_ACTIVE;
-        setPump(true);
-      } else {
+        setPump(true, true); // Bypass agricultural lockout saat api terverifikasi
+      } else if (!distanceSafe) {
+        // Jarak tidak valid atau di luar rentang semprot efektif -> Siaga / alarm
         currentState = STATE_ALARM_FAULT;
+        setEnvironmentalCommand(
+          "KEBAKARAN",
+          "CMD_RETRACT_ARM",
+          "PERINGATAN: JARAK NOZZLE DI LUAR BATAS AMAN",
+          "{\"cmd\":\"CMD_RETRACT_ARM\"}"
+        );
+      } else {
+        // Belum terverifikasi api visual atau kombinasi sensor kritis -> ulangi capture
+        requestCameraCapture();
       }
       break;
     }
@@ -564,21 +795,35 @@ void handleFireModeStaged() {
 }
 
 // ======================================================
-// 11. SETUP
+// 11. KONEKSI WIFI & SETUP
 // ======================================================
+void ensureWiFiConnected() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  unsigned long now = millis();
+  if (now - lastWifiAttempt < WIFI_RETRY_INTERVAL_MS) return;
+  lastWifiAttempt = now;
+
+  Serial.printf("[WiFi] Menghubungkan ulang ke SSID '%s'...\n", WIFI_SSID);
+  WiFi.disconnect(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\n[AGRAPATHA] Inisialisasi Robot Cerdas (Murni Sensor Onboard)...");
+
+  // Glitch-free Relay Initialization (Write DEACTIVE before setting OUTPUT)
+  digitalWrite(PUMP_RELAY_PIN, RELAY_DEACTIVE);
+  pinMode(PUMP_RELAY_PIN, OUTPUT);
+  pumpActive = false;
 
   pinMode(LIMIT_SW_LEFT, INPUT_PULLUP);
   pinMode(LIMIT_SW_RIGHT, INPUT_PULLUP);
   pinMode(MOTOR_IN1, OUTPUT);
   pinMode(MOTOR_IN2, OUTPUT);
   stopSlider();
-
-  pinMode(PUMP_RELAY_PIN, OUTPUT);
-  setPump(false);
 
   pinMode(FLAME_CH1_PIN, INPUT);
   pinMode(FLAME_CH2_PIN, INPUT);
@@ -607,30 +852,118 @@ void setup() {
   servoNozzle.write(angleNozzle);
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
-  vl53l0x.begin();
+  vl53l0xReady = vl53l0x.begin();
+  if (vl53l0xReady) {
+    Serial.println("[I2C OK] Sensor VL53L0X ToF siap.");
+  } else {
+    Serial.println("[I2C WARN] VL53L0X tidak terdeteksi saat boot (retry otomatis aktif).");
+  }
+
   dht.begin();
 
+  // Wi-Fi Station + AP Mode (wajib untuk MQTT Cloud + ESP-NOW sekaligus)
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("[WiFi] Menghubungkan ke '%s'", WIFI_SSID);
+
+  unsigned long wifiWaitStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiWaitStart < 8000) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("[WiFi OK] IP: %s | Channel: %d | MAC: %s\n",
+                  WiFi.localIP().toString().c_str(), WiFi.channel(), WiFi.macAddress().c_str());
+  } else {
+    Serial.println("[WiFi WARN] Belum terhubung saat boot, auto-reconnect akan berjalan di loop.");
+  }
+
+  // ESP-NOW Setup & Peer Registration ke ESP32-CAM
   if (esp_now_init() == ESP_OK) {
     esp_now_register_recv_cb(onEspNowDataRecv);
+    esp_now_peer_info_t camPeer = {};
+    memcpy(camPeer.peer_addr, ESP32_CAM_MAC, 6);
+    camPeer.channel = 0; // Mengikuti channel Wi-Fi aktif
+    camPeer.encrypt = false;
+    if (esp_now_add_peer(&camPeer) == ESP_OK) {
+      Serial.println("[ESP-NOW OK] Peer ESP32-CAM terdaftar.");
+    }
+  } else {
+    Serial.println("[ESP-NOW ERROR] Gagal inisialisasi ESP-NOW.");
   }
 
   secureClient.setInsecure();
+  secureClient.setTimeout(5000);
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setBufferSize(1024); // Alokasi buffer 1024 bytes agar payload JSON lengkap tidak terpotong
   mqttClient.setKeepAlive(60);
   mqttClient.setCallback(onMqttMessage);
 
   currentState = STATE_HOMING;
+  sliderMoveStartTime = millis();
 }
 
 // ======================================================
-// 12. MAIN LOOP
+// 12. MAIN LOOP (NON-BLOCKING & FAIL-SAFE)
 // ======================================================
 void loop() {
   unsigned long now = millis();
 
-  // 1. Baca Sensor Rutin & Evaluasi 4 Kondisi Tiap 250ms
+  ensureWiFiConnected();
+
+  // 1. Layani MQTT loop sesering mungkin agar E-STOP responsif instan
+  if (mqttClient.connected()) {
+    mqttClient.loop();
+  } else if (WiFi.status() == WL_CONNECTED && (now - lastMqttConnAttempt >= MQTT_RETRY_INTERVAL_MS)) {
+    lastMqttConnAttempt = now;
+    String clientId = "AgrapathaMainESP32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+      Serial.println("[MQTT] Terhubung ke EMQX Cloud TLS Broker (Port 8883)!");
+      mqttClient.subscribe(TOPIC_COMMANDS);
+    } else {
+      Serial.printf("[MQTT] Gagal terhubung ke broker, rc=%d\n", mqttClient.state());
+    }
+  }
+
+  // 2. Watchdog Timer Aktuator Manual & Durasi Maksimal Pompa (Anti-Run-Dry)
+  if (pumpActive && commandPumpEndTime > 0 && now >= commandPumpEndTime) {
+    setPump(false);
+    if (currentState == STATE_IRRIGATING || currentState == STATE_SUPPRESSION_ACTIVE) {
+      lastIrrigEndTime = now;
+      currentState = STATE_SCANNING_ZONES;
+    }
+    Serial.println("[WATCHDOG] Durasi pompa perintah selesai -> Pompa dimatikan otomatis.");
+  }
+  if (pumpActive && (now - pumpStartTime >= IRRIG_MAX_DURATION_MS)) {
+    setPump(false);
+    lastIrrigEndTime = now;
+    if (currentState == STATE_IRRIGATING || currentState == STATE_SUPPRESSION_ACTIVE) {
+      currentState = STATE_SCANNING_ZONES;
+    }
+    Serial.println("[WATCHDOG] Batas maksimum durasi pompa tercapai -> Safety Shutoff.");
+  }
+  if (sliderManualActive && now >= sliderManualEndTime) {
+    stopSlider();
+    Serial.println("[WATCHDOG] Gerakan manual slider selesai.");
+  }
+
+  // 3. Proteksi Ganda Limit Switch
+  if (digitalRead(LIMIT_SW_LEFT) == LOW && digitalRead(LIMIT_SW_RIGHT) == LOW) {
+    stopSlider();
+    setPump(false);
+    currentState = STATE_ALARM_FAULT;
+    setEnvironmentalCommand(
+      "FAULT",
+      "CMD_EMERGENCY_STOP",
+      "PERINTAH: HENTIKAN MOTOR (LIMIT SWITCH GANDA)",
+      "{\"cmd\":\"CMD_EMERGENCY_STOP\"}"
+    );
+  }
+
+  // 4. Baca Sensor Rutin & Evaluasi 4 Kondisi Tiap 250ms
   if (now - lastSensorReadTime >= 250) {
     lastSensorReadTime = now;
     readAllSensors();
@@ -641,155 +974,195 @@ void loop() {
     if ((flameDetected || aiFire) &&
         currentState != STATE_FIRE_MODE_STAGED &&
         currentState != STATE_SUPPRESSION_ACTIVE &&
+        currentState != STATE_ALARM_FAULT &&
         currentState != STATE_EMERGENCY_STOP) {
 
+      stopSlider();
+      sliderTransitionActive = false;
+      requestCameraCapture();
       currentState = STATE_FIRE_MODE_STAGED;
       currentFireStage = STAGE_SERVO1_YAW;
     }
   }
 
-  // 2. Proteksi Ganda Limit Switch
-  if (digitalRead(LIMIT_SW_LEFT) == LOW && digitalRead(LIMIT_SW_RIGHT) == LOW) {
-    stopSlider();
-    currentState = STATE_ALARM_FAULT;
-    setEnvironmentalCommand("FAULT", "CMD_EMERGENCY_STOP", "PERINTAH: HENTIKAN MOTOR SEGERA", "{\"cmd\":\"CMD_EMERGENCY_STOP\"}");
-  }
-
-  // 3. State Machine Sistem
-  switch (currentState) {
-    case STATE_HOMING:
-      if (digitalRead(LIMIT_SW_LEFT) == LOW) {
-        stopSlider();
-        currentZone = 1;
-        zoneScanCycles = 0;
-        currentState = STATE_SCANNING_ZONES;
-      } else {
-        moveSliderLeft();
-      }
-      break;
-
-    case STATE_SCANNING_ZONES:
-      if (zoneScanCycles < 3) {
-        moveServoSmooth(servoNozzle, angleNozzle, 60, 10);
-        moveServoSmooth(servoNozzle, angleNozzle, 120, 10);
-        moveServoSmooth(servoNozzle, angleNozzle, 90, 10);
-        zoneScanCycles++;
-      } else {
-        zoneScanCycles = 0;
-        if (currentZone == 1) {
-          sliderMoveStartTime = millis();
-          while (millis() - sliderMoveStartTime < SLIDER_ZONE2_TRAVEL_MS) {
-            moveSliderRight();
-            delay(10);
-          }
+  // 5. State Machine Non-Blocking
+  if (!sliderManualActive) {
+    switch (currentState) {
+      case STATE_HOMING:
+        if (digitalRead(LIMIT_SW_LEFT) == LOW) {
           stopSlider();
-          currentZone = 2;
-        } else if (currentZone == 2) {
-          while (digitalRead(LIMIT_SW_RIGHT) == HIGH) {
-            moveSliderRight();
-            delay(10);
-          }
+          currentZone = 1;
+          zoneScanCycles = 0;
+          sliderTransitionActive = false;
+          currentState = STATE_SCANNING_ZONES;
+        } else if (now - sliderMoveStartTime >= SLIDER_MAX_TRAVEL_MS) {
           stopSlider();
-          currentZone = 3;
-        } else {
-          currentState = STATE_HOMING;
-        }
-      }
-
-      // Logika Penyiraman Otomatis (Jika tidak dikunci oleh kondisi basah)
-      if (!pumpLockout && soilMoisturePct < THRESH_SOIL_DRY && (now - lastIrrigEndTime > IRRIG_COOLDOWN_MS)) {
-        currentState = STATE_IRRIGATING;
-        setPump(true);
-      }
-      break;
-
-    case STATE_IRRIGATING:
-      if (soilMoisturePct >= THRESH_SOIL_TARGET || (now - pumpStartTime >= IRRIG_MAX_DURATION_MS)) {
-        setPump(false);
-        lastIrrigEndTime = now;
-        currentState = STATE_SCANNING_ZONES;
-      }
-      break;
-
-    case STATE_FIRE_MODE_STAGED:
-      handleFireModeStaged();
-      break;
-
-    case STATE_SUPPRESSION_ACTIVE:
-      if (now - pumpStartTime >= SUPPRESSION_DURATION_MS) {
-        setPump(false);
-        readAllSensors();
-
-        if (activeFlameCount == 0 && strcmp(aiVisionClass, "FIRE") != 0) {
-          moveServoSmooth(servoShoulder, angleShoulder, 45, 15);
-          moveServoSmooth(servoElbow, angleElbow, 45, 15);
-          moveServoSmooth(servoBase, angleBase, 90, 15);
-          currentState = STATE_HOMING;
-        } else {
           currentState = STATE_ALARM_FAULT;
+          setEnvironmentalCommand("FAULT", "CMD_RESET_EMERGENCY", "TIMEOUT HOMING REL", "{\"cmd\":\"CMD_RESET_EMERGENCY\"}");
+        } else {
+          moveSliderLeft();
         }
-      }
-      break;
+        break;
 
-    case STATE_ALARM_FAULT:
-    case STATE_EMERGENCY_STOP:
-      stopSlider();
-      setPump(false);
-      break;
+      case STATE_SCANNING_ZONES:
+        if (sliderTransitionActive) {
+          if (currentZone == 1) {
+            if (now - sliderMoveStartTime >= SLIDER_ZONE2_TRAVEL_MS || digitalRead(LIMIT_SW_RIGHT) == LOW) {
+              stopSlider();
+              sliderTransitionActive = false;
+              currentZone = 2;
+            } else {
+              moveSliderRight();
+            }
+          } else if (currentZone == 2) {
+            if (digitalRead(LIMIT_SW_RIGHT) == LOW) {
+              stopSlider();
+              sliderTransitionActive = false;
+              currentZone = 3;
+            } else if (now - sliderMoveStartTime >= SLIDER_MAX_TRAVEL_MS) {
+              stopSlider();
+              sliderTransitionActive = false;
+              currentState = STATE_HOMING;
+              sliderMoveStartTime = now;
+            } else {
+              moveSliderRight();
+            }
+          }
+        } else {
+          if (zoneScanCycles < 3) {
+            // Pemindaian halus nozzle tanpa memblokir loop lama
+            static unsigned long lastSweepTime = 0;
+            static int sweepStep = 0;
+            if (now - lastSweepTime >= 350) {
+              lastSweepTime = now;
+              const int sweepTargets[3] = { 65, 115, 90 };
+              angleNozzle = sweepTargets[sweepStep];
+              servoNozzle.write(angleNozzle);
+              sweepStep++;
+              if (sweepStep >= 3) {
+                sweepStep = 0;
+                zoneScanCycles++;
+              }
+            }
+          } else {
+            zoneScanCycles = 0;
+            if (currentZone == 1 || currentZone == 2) {
+              sliderTransitionActive = true;
+              sliderMoveStartTime = now;
+            } else {
+              currentState = STATE_HOMING;
+              sliderMoveStartTime = now;
+            }
+          }
 
-    default:
-      break;
+          // Logika Penyiraman Otomatis (Jika tidak dikunci oleh kondisi basah)
+          if (!pumpLockout && soilMoisturePct < THRESH_SOIL_DRY && (now - lastIrrigEndTime > IRRIG_COOLDOWN_MS)) {
+            currentState = STATE_IRRIGATING;
+            setPump(true);
+          }
+        }
+        break;
+
+      case STATE_IRRIGATING:
+        if (pumpLockout || soilMoisturePct >= THRESH_SOIL_TARGET || (now - pumpStartTime >= IRRIG_MAX_DURATION_MS)) {
+          setPump(false);
+          lastIrrigEndTime = now;
+          currentState = STATE_SCANNING_ZONES;
+        }
+        break;
+
+      case STATE_FIRE_MODE_STAGED:
+        handleFireModeStaged();
+        break;
+
+      case STATE_SUPPRESSION_ACTIVE:
+        if (now - pumpStartTime >= SUPPRESSION_DURATION_MS) {
+          setPump(false);
+          readAllSensors();
+
+          if (activeFlameCount == 0 && strcmp(aiVisionClass, "FIRE") != 0) {
+            moveServoSmooth(servoShoulder, angleShoulder, 45, 12);
+            moveServoSmooth(servoElbow, angleElbow, 45, 12);
+            moveServoSmooth(servoBase, angleBase, 90, 12);
+            currentState = STATE_HOMING;
+            sliderMoveStartTime = millis();
+          } else {
+            currentState = STATE_ALARM_FAULT;
+            setEnvironmentalCommand(
+              "KEBAKARAN",
+              "CMD_FIRE_SUPPRESSION",
+              "API MASIH AKTIF: ULANGI PEMADAMAN",
+              "{\"cmd\":\"CMD_FIRE_SUPPRESSION\",\"params\":{\"duration\":4000}}"
+            );
+          }
+        }
+        break;
+
+      case STATE_ALARM_FAULT:
+      case STATE_EMERGENCY_STOP:
+        stopSlider();
+        setPump(false);
+        break;
+
+      default:
+        break;
+    }
   }
 
-  // 4. Publikasi Telemetri ke Dashboard Tiap 1 Detik
+  // 6. Publikasi Telemetri ke Dashboard Tiap 1 Detik
   if (now - lastMqttPubTime >= 1000) {
     lastMqttPubTime = now;
-    if (!mqttClient.connected()) {
-      if (WiFi.status() == WL_CONNECTED) {
-        String clientId = "AgrapathaMainESP32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-        if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
-          Serial.println("[MQTT] Terhubung ke EMQX Cloud TLS Broker (Port 8883)!");
-          mqttClient.subscribe(TOPIC_COMMANDS);
-        } else {
-          Serial.printf("[MQTT] Gagal terhubung ke broker, rc=%d\n", mqttClient.state());
-        }
-      }
-    } else {
-      mqttClient.loop();
-
-      char jsonBuf[512];
-      snprintf(jsonBuf, sizeof(jsonBuf),
+    if (mqttClient.connected()) {
+      char jsonBuf[768];
+      int written = snprintf(jsonBuf, sizeof(jsonBuf),
         "{"
         "\"temperature\":%.2f,"
         "\"humidity\":%.2f,"
         "\"soil_moisture\":%.2f,"
+        "\"soil_raw\":%d,"
         "\"gas_raw\":%d,"
         "\"mq135_raw\":%d,"
         "\"flame_detected\":%d,"
         "\"flame_ch\":[%d,%d,%d,%d,%d],"
         "\"distance_mm\":%u,"
         "\"zone\":%d,"
+        "\"motor_state\":\"%s\","
+        "\"motor_driver\":\"L298N_ARM_GPIO\","
+        "\"limit_left\":%s,"
+        "\"limit_right\":%s,"
         "\"pump_status\":%s,"
         "\"pump_lockout\":%s,"
+        "\"ventilation_active\":%s,"
+        "\"gas_alarm_active\":%s,"
+        "\"servo_angles\":[%d,%d,%d,%d],"
+        "\"system_state\":\"%s\","
+        "\"uptime_seconds\":%lu,"
+        "\"vision_prediction\":\"%s\","
+        "\"vision_confidence\":%.2f,"
         "\"env_condition\":\"%s\","
         "\"action_command\":\"%s\","
         "\"command_label\":\"%s\","
         "\"command_payload\":%s"
         "}",
-        currentTemp, currentHumidity, soilMoisturePct, rawMQ135,
-        rawMQ135,
+        currentTemp, currentHumidity, soilMoisturePct, rawSoil, rawMQ135, rawMQ135,
         (activeFlameCount > 0 ? 1 : 0),
         flameCh[0], flameCh[1], flameCh[2], flameCh[3], flameCh[4],
-        targetDistanceMm, currentZone, pumpActive ? "true" : "false",
+        targetDistanceMm, currentZone, motorStateStr,
+        (digitalRead(LIMIT_SW_LEFT) == LOW) ? "true" : "false",
+        (digitalRead(LIMIT_SW_RIGHT) == LOW) ? "true" : "false",
+        pumpActive ? "true" : "false",
         pumpLockout ? "true" : "false",
-        envCondition,
-        actionCommand, commandButtonLabel, commandPayload
+        ventilationActive ? "true" : "false",
+        gasAlarmActive ? "true" : "false",
+        angleBase, angleShoulder, angleElbow, angleNozzle,
+        getSystemStateLabel(currentState),
+        (unsigned long)(now / 1000UL),
+        aiVisionClass, aiConfidence * 100.0f,
+        envCondition, actionCommand, commandButtonLabel, commandPayload
       );
-      mqttClient.publish(TOPIC_TELEMETRY, jsonBuf);
-    }
-  } else {
-    if (mqttClient.connected()) {
-      mqttClient.loop();
+      if (written > 0 && written < (int)sizeof(jsonBuf)) {
+        mqttClient.publish(TOPIC_TELEMETRY, jsonBuf);
+      }
     }
   }
 }

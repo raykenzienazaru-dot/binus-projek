@@ -55,8 +55,8 @@ export const DEFAULT_IOT_CONFIG: IotConfig = {
     baseUrl: '', // Defaults to same-origin relative path (proxied in dev, direct in prod)
   },
   railway: {
-    wildfireUrl: 'https://tes-tflite-production.up.railway.app',
-    leafUrl: null, // Isolated until explicit model deployment
+    wildfireUrl: 'https://be-binus-production.up.railway.app',
+    leafUrl: null, // Leaf disease removed per hardware specification
   },
   hardware: {
     esp32MainMac: '8C:AA:B5:37:71:18',

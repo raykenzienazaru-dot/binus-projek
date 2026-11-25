@@ -41,7 +41,6 @@ MODEL_CANDIDATE_PATHS = [
     os.path.join(os.path.dirname(__file__), "agrapatha_vision_mobilenetv2.tflite"),
     "model/agrapatha_vision_mobilenetv2.tflite",
     "agrapatha_vision_mobilenetv2.tflite",
-    r"C:\Users\KOMAGATRA\Downloads\BINUS\agrapatha_vision_mobilenetv2 (1).tflite",
 ]
 
 interpreter = None
@@ -84,10 +83,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB upload safety limit
 
 
 @app.get("/")
@@ -123,6 +124,12 @@ def process_inference(image_bytes: bytes) -> dict:
             detail=f"TFLite model is not ready. Error: {model_load_error}",
         )
 
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image payload exceeds 10 MB maximum allowed size.",
+        )
+
     start_time = time.perf_counter()
 
     try:
@@ -152,10 +159,14 @@ def process_inference(image_bytes: bytes) -> dict:
     firmware_class = CLASSES_FIRMWARE[predicted_idx]
     confidence = float(output_tensor[predicted_idx])
 
-    scores = {
+    dashboard_scores = {
         "Non-Fire": round(non_fire_score, 4),
         "Smoke": round(smoke_score, 4),
         "Fire": round(fire_score, 4),
+    }
+
+    combined_scores = {
+        **dashboard_scores,
         "SAFE": round(non_fire_score, 4),
         "SMOKE": round(smoke_score, 4),
         "FIRE": round(fire_score, 4),
@@ -163,29 +174,43 @@ def process_inference(image_bytes: bytes) -> dict:
 
     sorted_scores = [
         {"class_name": "Fire", "score": round(fire_score, 4), "percentage": round(fire_score * 100.0, 2)},
-        {"class_name": "Smoke", "score": round(smoke_score, 4), "percentage": round(smoke_prob := smoke_score * 100.0, 2)},
+        {"class_name": "Smoke", "score": round(smoke_score, 4), "percentage": round(smoke_score * 100.0, 2)},
         {"class_name": "Non-Fire", "score": round(non_fire_score, 4), "percentage": round(non_fire_score * 100.0, 2)},
     ]
     sorted_scores.sort(key=lambda x: x["score"], reverse=True)
 
-    return {
-        "status": "success",
+    data_payload = {
         "predicted_label": predicted_label,
-        "class": firmware_class,
         "confidence": round(confidence, 4),
         "confidence_percentage": round(confidence * 100.0, 2),
-        "scores": scores,
+        "scores": dashboard_scores,
         "sorted_scores": sorted_scores,
         "output_type": "probability",
         "inference_time_ms": round(inference_ms, 2),
         "input_resolution": [224, 224],
-        "model_name": "MobileNetV2",
+        "model_name": "MobileNetV2 (be-binus Railway)",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return {
+        "success": True,
+        "status": "success",
+        "data": data_payload,
+        "error": None,
+        # Top-level fields for lightweight microcontroller clients (ESP32-CAM)
+        "class": firmware_class,
+        "predicted_label": predicted_label,
+        "confidence": data_payload["confidence"],
+        "confidence_percentage": data_payload["confidence_percentage"],
+        "scores": combined_scores,
+        "inference_time_ms": data_payload["inference_time_ms"],
+        "model_name": data_payload["model_name"],
     }
 
 
 @app.post("/api/v1/predict")
 @app.post("/predict/fire")
+@app.post("/predict")
 async def predict_fire(request: Request, file: Optional[UploadFile] = File(None)):
     # 1. Handle multipart/form-data upload
     if file is not None:

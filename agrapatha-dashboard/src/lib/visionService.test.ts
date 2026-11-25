@@ -37,7 +37,7 @@ describe('Vision & Camera Subsystem Unit Tests', () => {
   // 2. Wildfire Configuration & Contract Tests
   it('4. getWildfireApiBaseUrl defaults to verified Railway production URL', () => {
     const url = getWildfireApiBaseUrl();
-    assert.equal(url, 'https://tes-tflite-production.up.railway.app');
+    assert.equal(url, 'https://be-binus-production.up.railway.app');
   });
 
   it('5. isValidWildfireData validates true wildfire payload', () => {

@@ -6,9 +6,11 @@
  * FITUR:
  * 1. Capture Citra Hardware OV2640 (QVGA / 320x240 @ JPEG Quality 12).
  * 2. Transmisi ke Railway Cloud Backend via HTTPS POST multipart/form-data (/predict/fire).
+ *    Host: be-binus-production.up.railway.app
  * 3. Model Computer Vision: MobileNetV2 3-Kelas ("FIRE", "SMOKE", "SAFE").
  * 4. Transmisi Hasil AI ke NodeMCU ESP32-S Main Controller via ESP-NOW.
- * 5. Target MAC Main Controller: 8C:AA:B5:37:71:18.
+ * 5. HTTP/1.1 Chunked Decoding & DynamicJsonDocument(2048) untuk parsing stabil.
+ * 6. Target MAC Main Controller: 8C:AA:B5:37:71:18.
  * ==============================================================================
  */
 
@@ -60,16 +62,15 @@
   const char* WIFI_PASSWORD = "01020304";
 #endif
 
-// Endpoint Railway FastAPI MobileNetV2
-const char* AI_HOST = "tes-tflite-production.up.railway.app";
+// Endpoint Railway FastAPI MobileNetV2 (be-binus)
+const char* AI_HOST = "be-binus-production.up.railway.app";
 const char* AI_PATH = "/predict/fire";
 
 // MAC Address NodeMCU ESP32-S Main Controller
 const uint8_t TARGET_MAIN_MAC[6] = { 0x8C, 0xAA, 0xB5, 0x37, 0x71, 0x18 };
-constexpr uint8_t DEFAULT_ESP_NOW_CHANNEL = 6;
 
 // ======================================================
-// 3. STRUKTUR PROTOKOL ESP-NOW
+// 3. STRUKTUR PROTOKOL ESP-NOW (SINKRON DENGAN MAIN ESP32)
 // ======================================================
 #define PACKET_VISION_RESULT   1
 #define PACKET_IMAGE_START     2
@@ -90,39 +91,23 @@ typedef struct __attribute__((packed)) {
   uint32_t timestampMs;
 } CameraAiPacket;
 
-typedef struct __attribute__((packed)) {
-  uint8_t  packetType;
-  uint32_t scanNumber;
-  uint32_t imageSize;
-  uint16_t totalChunks;
-} ImageStartPacket;
-
-typedef struct __attribute__((packed)) {
-  uint8_t  packetType;
-  uint32_t scanNumber;
-  uint16_t chunkIndex;
-  uint16_t dataLength;
-  uint8_t  data[IMAGE_CHUNK_SIZE];
-} ImageChunkPacket;
-
-typedef struct __attribute__((packed)) {
-  uint8_t  packetType;
-  uint32_t scanNumber;
-  uint16_t totalChunks;
-} ImageEndPacket;
-
 // Global Variables
 bool cameraHardwareReady = false;
 volatile bool captureRequested = false;
 uint32_t scanCounter = 0;
 unsigned long lastInferenceTime = 0;
-const unsigned long AUTO_INFERENCE_INTERVAL_MS = 2000;
+unsigned long lastWifiAttemptTime = 0;
+const unsigned long AUTO_INFERENCE_INTERVAL_MS = 2500;
+const unsigned long WIFI_RECONNECT_INTERVAL_MS = 15000;
 
 // ======================================================
 // 4. INISIALISASI KAMERA OV2640
 // ======================================================
 bool initCamera() {
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Nonaktifkan brownout detector
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Nonaktifkan brownout detector saat inisialisasi RF/Cam
+
+  pinMode(FLASH_LED_PIN, OUTPUT);
+  digitalWrite(FLASH_LED_PIN, LOW);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -145,11 +130,20 @@ bool initCamera() {
   config.pin_reset    = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  
-  // Resolusi QVGA (320x240) - ukuran optimal untuk inferensi MobileNetV2 224x224
+
+  // Resolusi QVGA (320x240) - ukuran optimal & cepat untuk inferensi MobileNetV2 224x224
   config.frame_size   = FRAMESIZE_QVGA;
   config.jpeg_quality = 12;
-  config.fb_count     = 1;
+
+  if (psramFound()) {
+    config.fb_count    = 2;
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode   = CAMERA_GRAB_LATEST;
+  } else {
+    config.fb_count    = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.grab_mode   = CAMERA_GRAB_WHEN_EMPTY;
+  }
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
@@ -166,13 +160,83 @@ bool initCamera() {
     s->set_whitebal(s, 1);
   }
 
+  // Warm-up 2 frame awal agar Auto Exposure & AWB stabil
+  for (int i = 0; i < 2; i++) {
+    camera_fb_t *warm = esp_camera_fb_get();
+    if (warm) esp_camera_fb_return(warm);
+    delay(50);
+  }
+
   cameraHardwareReady = true;
   Serial.println("[CAM OK] Sensor Kamera OV2640 Siap.");
   return true;
 }
 
 // ======================================================
-// 5. QUERY INFERENSI KE RAILWAY CLOUD BACKEND
+// 5. HELPER DECODING HTTP CHUNKED & WIFI RECONNECT
+// ======================================================
+String decodeHttpChunked(const String &rawBody) {
+  String decoded;
+  int pos = 0;
+  const int len = rawBody.length();
+
+  while (pos < len) {
+    int lineEnd = rawBody.indexOf('\n', pos);
+    if (lineEnd == -1) break;
+
+    String sizeLine = rawBody.substring(pos, lineEnd);
+    sizeLine.trim();
+    pos = lineEnd + 1;
+
+    if (sizeLine.length() == 0) continue;
+
+    // Strip optional chunk extensions (;...)
+    int semi = sizeLine.indexOf(';');
+    if (semi != -1) sizeLine = sizeLine.substring(0, semi);
+
+    long chunkSize = strtol(sizeLine.c_str(), nullptr, 16);
+    if (chunkSize <= 0) break;
+
+    int copyEnd = pos + (int)chunkSize;
+    if (copyEnd > len) copyEnd = len;
+    decoded += rawBody.substring(pos, copyEnd);
+    pos = copyEnd;
+
+    // Lewati CRLF setelah chunk
+    if (pos < len && rawBody[pos] == '\r') pos++;
+    if (pos < len && rawBody[pos] == '\n') pos++;
+  }
+
+  return decoded;
+}
+
+String extractCleanJson(const String &rawBody, bool isChunked) {
+  String body = isChunked ? decodeHttpChunked(rawBody) : rawBody;
+  if (body.length() == 0 && rawBody.length() > 0) {
+    body = rawBody;
+  }
+  int firstBrace = body.indexOf('{');
+  int lastBrace  = body.lastIndexOf('}');
+  if (firstBrace != -1 && lastBrace > firstBrace) {
+    return body.substring(firstBrace, lastBrace + 1);
+  }
+  return body;
+}
+
+void ensureWiFiConnected() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
+  unsigned long now = millis();
+  if (now - lastWifiAttemptTime < WIFI_RECONNECT_INTERVAL_MS) return;
+  lastWifiAttemptTime = now;
+
+  Serial.printf("[WiFi] Reconnecting ke SSID '%s'...\n", WIFI_SSID);
+  WiFi.disconnect(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+}
+
+// ======================================================
+// 6. QUERY INFERENSI KE RAILWAY CLOUD BACKEND
 // ======================================================
 bool queryCloudAiVision(const uint8_t *jpegBuf, size_t jpegLen, CameraAiPacket *outResult) {
   if (WiFi.status() != WL_CONNECTED) {
@@ -181,8 +245,8 @@ bool queryCloudAiVision(const uint8_t *jpegBuf, size_t jpegLen, CameraAiPacket *
   }
 
   WiFiClientSecure client;
-  client.setInsecure(); // Menggunakan SSL tanpa verifikasi sertifikat lokal
-  client.setTimeout(10000);
+  client.setInsecure(); // SSL ke Railway (*.up.railway.app)
+  client.setTimeout(12000);
 
   Serial.printf("[AI-CLOUD] Mengirim citra (%u byte) ke https://%s%s...\n", jpegLen, AI_HOST, AI_PATH);
 
@@ -203,76 +267,120 @@ bool queryCloudAiVision(const uint8_t *jpegBuf, size_t jpegLen, CameraAiPacket *
   client.println("Host: " + String(AI_HOST));
   client.println("Content-Type: multipart/form-data; boundary=" + boundary);
   client.println("Content-Length: " + String(totalLen));
-  client.println("User-Agent: ESP32-CAM-AI-ARM/2.0");
+  client.println("User-Agent: ESP32-CAM-AI-ARM/2.1");
+  client.println("Accept: application/json");
   client.println("Connection: close");
   client.println();
 
-  // Kirim Header Boundary
-  client.print(head);
-
   // Streaming body gambar per 1024 byte agar aman di buffer RAM
+  client.print(head);
   const size_t chunkSize = 1024;
   for (size_t offset = 0; offset < jpegLen; offset += chunkSize) {
     size_t toWrite = (jpegLen - offset > chunkSize) ? chunkSize : (jpegLen - offset);
     client.write(jpegBuf + offset, toWrite);
   }
-
   client.print(tail);
   client.flush();
 
-  // Tunggu respon Railway
+  // Tunggu respon Railway (maksimal 10 detik)
   unsigned long startWait = millis();
-  while (!client.available() && millis() - startWait < 8000) {
-    delay(50);
+  while (!client.available() && client.connected() && (millis() - startWait < 10000)) {
+    delay(25);
+  }
+
+  if (!client.available()) {
+    Serial.println("[AI-CLOUD] Timeout menunggu respon server.");
+    client.stop();
+    return false;
   }
 
   String statusLine = client.readStringUntil('\n');
-  Serial.printf("[AI-CLOUD] Status: %s\n", statusLine.c_str());
+  statusLine.trim();
+  Serial.printf("[AI-CLOUD] HTTP Status: %s\n", statusLine.c_str());
 
-  // Lewati HTTP Header
-  while (client.available()) {
+  if (statusLine.indexOf(" 200 ") == -1) {
+    client.stop();
+    return false;
+  }
+
+  // Baca & deteksi Transfer-Encoding: chunked pada HTTP Header
+  bool isChunked = false;
+  unsigned long hdrWaitStart = millis();
+  while (millis() - hdrWaitStart < 3000) {
+    if (!client.available()) {
+      if (!client.connected()) break;
+      delay(5);
+      continue;
+    }
     String line = client.readStringUntil('\n');
+    String lowerLine = line;
+    lowerLine.toLowerCase();
+    if (lowerLine.indexOf("transfer-encoding:") != -1 && lowerLine.indexOf("chunked") != -1) {
+      isChunked = true;
+    }
     if (line == "\r" || line.length() == 0) break;
   }
 
-  // Baca Payload JSON
-  String payload = client.readString();
+  // Baca seluruh body respon secara stabil
+  String rawPayload;
+  rawPayload.reserve(1024);
+  unsigned long bodyReadStart = millis();
+  while ((client.connected() || client.available()) && (millis() - bodyReadStart < 5000)) {
+    while (client.available()) {
+      rawPayload += (char)client.read();
+    }
+    if (!client.connected()) break;
+    delay(5);
+  }
   client.stop();
 
-  if (payload.length() == 0) {
-    Serial.println("[AI-CLOUD] Respon kosong dari server.");
+  String jsonPayload = extractCleanJson(rawPayload, isChunked);
+  if (jsonPayload.length() == 0) {
+    Serial.println("[AI-CLOUD] Payload JSON kosong dari server.");
     return false;
   }
 
-  StaticJsonDocument<512> doc;
-  DeserializationError err = deserializeJson(doc, payload);
+  DynamicJsonDocument doc(2048);
+  DeserializationError err = deserializeJson(doc, jsonPayload);
   if (err) {
-    Serial.printf("[AI-CLOUD ERROR] Deserialisasi JSON gagal: %s\n", err.c_str());
+    Serial.printf("[AI-CLOUD ERROR] Deserialisasi JSON gagal (%s) | Len: %u\n", err.c_str(), jsonPayload.length());
     return false;
   }
 
-  const char* status = doc["status"] | "error";
-  if (strcmp(status, "success") == 0) {
-    const char* label = doc["class"] | "SAFE";
-    strncpy(outResult->visionClass, label, sizeof(outResult->visionClass) - 1);
-    outResult->visionClass[sizeof(outResult->visionClass) - 1] = '\0';
-    outResult->confidence = doc["confidence"] | 0.0f;
-    outResult->fireScore  = doc["scores"]["FIRE"]  | 0.0f;
-    outResult->smokeScore = doc["scores"]["SMOKE"] | 0.0f;
-    outResult->safeScore  = doc["scores"]["SAFE"]  | 0.0f;
-    outResult->timestampMs = millis();
-
-    Serial.printf("[AI-CLOUD HASIL] Kelas: %s (%.1f%%) | Fire: %.2f | Smoke: %.2f | Safe: %.2f\n",
-                  outResult->visionClass, outResult->confidence * 100.0,
-                  outResult->fireScore, outResult->smokeScore, outResult->safeScore);
-    return true;
+  bool okStatus = (doc["success"] == true) || (strcmp(doc["status"] | "", "success") == 0);
+  if (!okStatus) {
+    Serial.println("[AI-CLOUD ERROR] Server mengembalikan status gagal.");
+    return false;
   }
 
-  return false;
+  // Prioritaskan field top-level ESP32, fallback ke doc["data"]
+  const char* rawClass = doc["class"] | doc["data"]["predicted_label"] | doc["predicted_label"] | "SAFE";
+  char normalizedClass[16] = "SAFE";
+  if (strcasecmp(rawClass, "FIRE") == 0 || strcasecmp(rawClass, "Fire") == 0) {
+    strncpy(normalizedClass, "FIRE", sizeof(normalizedClass));
+  } else if (strcasecmp(rawClass, "SMOKE") == 0 || strcasecmp(rawClass, "Smoke") == 0) {
+    strncpy(normalizedClass, "SMOKE", sizeof(normalizedClass));
+  } else {
+    strncpy(normalizedClass, "SAFE", sizeof(normalizedClass));
+  }
+
+  strncpy(outResult->visionClass, normalizedClass, sizeof(outResult->visionClass) - 1);
+  outResult->visionClass[sizeof(outResult->visionClass) - 1] = '\0';
+
+  outResult->confidence = doc["confidence"] | doc["data"]["confidence"] | 0.0f;
+  outResult->fireScore  = doc["scores"]["FIRE"]  | doc["scores"]["Fire"]     | doc["data"]["scores"]["Fire"]     | 0.0f;
+  outResult->smokeScore = doc["scores"]["SMOKE"] | doc["scores"]["Smoke"]    | doc["data"]["scores"]["Smoke"]    | 0.0f;
+  outResult->safeScore  = doc["scores"]["SAFE"]  | doc["scores"]["Non-Fire"] | doc["data"]["scores"]["Non-Fire"] | 0.0f;
+  outResult->timestampMs = millis();
+
+  Serial.printf("[AI-CLOUD HASIL] Kelas: %s (%.1f%%) | Fire: %.2f | Smoke: %.2f | Safe: %.2f\n",
+                outResult->visionClass, outResult->confidence * 100.0,
+                outResult->fireScore, outResult->smokeScore, outResult->safeScore);
+  return true;
 }
 
 // ======================================================
-// 6. ESP-NOW WIRELESS TRANSMITTER KE ESP32 MAIN
+// 7. ESP-NOW WIRELESS TRANSMITTER KE ESP32 MAIN
 // ======================================================
 void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
   if (incomingData != nullptr && len > 0) {
@@ -293,18 +401,19 @@ bool initESPNow() {
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, TARGET_MAIN_MAC, 6);
-  peerInfo.channel = WiFi.channel();
+  peerInfo.channel = 0; // Otomatis mengikuti channel Wi-Fi aktif
   peerInfo.encrypt = false;
 
   if (esp_now_add_peer(&peerInfo) == ESP_OK) {
     Serial.println("[ESP-NOW OK] Peer ESP32 Main terdaftar.");
     return true;
   }
+  Serial.println("[ESP-NOW ERROR] Gagal mendaftarkan peer ESP32 Main.");
   return false;
 }
 
 // ======================================================
-// 7. SETUP & MAIN LOOP
+// 8. SETUP & MAIN LOOP
 // ======================================================
 void setup() {
   Serial.begin(115200);
@@ -314,11 +423,12 @@ void setup() {
   initCamera();
 
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("[WiFi] Menghubungkan ke %s", WIFI_SSID);
+  Serial.printf("[WiFi] Menghubungkan ke '%s'", WIFI_SSID);
 
   uint32_t startMs = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startMs < 8000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startMs < 10000) {
     delay(250);
     Serial.print(".");
   }
@@ -326,12 +436,16 @@ void setup() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("[WiFi OK] IP: %s | Channel: %d\n", WiFi.localIP().toString().c_str(), WiFi.channel());
+  } else {
+    Serial.println("[WiFi WARN] Belum terhubung saat boot, auto-reconnect aktif di loop.");
   }
 
   initESPNow();
 }
 
 void loop() {
+  ensureWiFiConnected();
+
   unsigned long now = millis();
 
   // Eksekusi inferensi otomatis berkala atau sesuai permintaan trigger arm
@@ -351,10 +465,10 @@ void loop() {
     packet.packetType = PACKET_VISION_RESULT;
     packet.scanNumber = ++scanCounter;
 
-    // 1. Query Inferensi ke Railway API
+    // 1. Query Inferensi ke Railway API (be-binus-production.up.railway.app)
     bool success = queryCloudAiVision(fb->buf, fb->len, &packet);
     if (!success) {
-      // Fallback aman jika Railway offline / timeout
+      // Fallback aman jika Railway offline / timeout (fail-safe: jangan klaim SAFE palsu)
       strncpy(packet.visionClass, "Unknown", sizeof(packet.visionClass) - 1);
       packet.confidence = 0.0f;
       packet.fireScore = 0.0f;

@@ -78,8 +78,8 @@
 #define PIN_LIMIT_RIGHT         33 // Limit Switch Right (INPUT_PULLUP)
 
 // --- 6. Railway Cloud AI Inference API ---
-#define RAILWAY_AI_HOST         "tes-tflite-production.up.railway.app"
-#define RAILWAY_AI_PATH         "/api/v1/predict"
+#define RAILWAY_AI_HOST         "be-binus-production.up.railway.app"
+#define RAILWAY_AI_PATH         "/predict/fire"
 
 // --- 7. ESP-NOW Hardware MAC Addresses ---
 #define MAC_ESP32_MAIN          { 0x8C, 0xAA, 0xB5, 0x37, 0x71, 0x18 }
