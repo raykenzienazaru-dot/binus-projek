@@ -165,6 +165,12 @@ export interface MqttWssOptions {
   onClose?: () => void;
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buf = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buf).set(bytes);
+  return buf;
+}
+
 export class MqttWssClient {
   private ws: WebSocket | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -189,7 +195,7 @@ export class MqttWssClient {
 
       ws.onopen = () => {
         const pkt = buildMqttConnectPacket(clientId, this.opts.username, this.opts.password, 45);
-        ws.send(pkt);
+        ws.send(toArrayBuffer(pkt));
       };
 
       ws.onmessage = (evt: MessageEvent) => {
@@ -201,10 +207,10 @@ export class MqttWssClient {
           if (frame.returnCode === 0) {
             this.isConnected = true;
             const topic = this.opts.telemetryTopic || 'agrapatha/telemetry';
-            ws.send(buildMqttSubscribePacket(this.packetCounter++, topic));
+            ws.send(toArrayBuffer(buildMqttSubscribePacket(this.packetCounter++, topic)));
             this.pingTimer = setInterval(() => {
               if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
+                this.ws.send(toArrayBuffer(new Uint8Array([0xc0, 0x00]))); // PINGREQ
               }
             }, 30000);
             this.opts.onConnect?.();
@@ -243,7 +249,7 @@ export class MqttWssClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.isConnected) {
       return false;
     }
-    this.ws.send(buildMqttPublishPacket(topic, payload));
+    this.ws.send(toArrayBuffer(buildMqttPublishPacket(topic, payload)));
     return true;
   }
 

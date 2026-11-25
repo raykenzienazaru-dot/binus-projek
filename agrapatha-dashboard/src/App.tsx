@@ -10,7 +10,6 @@ import { FloraHistoryCanvas, type TelemetryHistoryPoint } from './components/Flo
 import { Model1HazardView } from './components/Model1HazardView';
 import { Model2BotanicalView } from './components/Model2BotanicalView';
 import {
-  Activity,
   AlertCircle,
   AlertOctagon,
   ArrowLeft,
@@ -35,7 +34,6 @@ import {
   Video,
   VideoOff,
   Wind,
-  Zap,
 } from 'lucide-react';
 import {
   NavigationMenu,
