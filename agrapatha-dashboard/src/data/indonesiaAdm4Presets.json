@@ -1,30 +1,72 @@
 [
   {
-    "adm4": "31.71.01.1001",
-    "desa": "Gambir",
-    "kecamatan": "Gambir",
+    "adm4": "31.71.02.1001",
+    "desa": "Pasar Baru",
+    "kecamatan": "Sawah Besar",
     "kotkab": "Kota Adm. Jakarta Pusat",
     "provinsi": "DKI Jakarta",
     "timezone": "Asia/Jakarta",
     "coordinates": {
-      "lat": -6.1763842693,
-      "lon": 106.8267073562
+      "lat": -6.1660294705,
+      "lon": 106.8344840159
     },
     "isVerified": true,
-    "notes": "Verified primary reference fixture in official BMKG repository (infoBMKG/data-cuaca)"
+    "notes": "Verified via api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.02.1001 (Kel. Pasar Baru, Kec. Sawah Besar, Jakarta Pusat)"
   },
   {
-    "adm4": "31.71.03.1001",
-    "desa": "Kemayoran",
-    "kecamatan": "Kemayoran",
+    "adm4": "31.71.02.1002",
+    "desa": "Karang Anyar",
+    "kecamatan": "Sawah Besar",
     "kotkab": "Kota Adm. Jakarta Pusat",
     "provinsi": "DKI Jakarta",
     "timezone": "Asia/Jakarta",
     "coordinates": {
-      "lat": -6.1601,
-      "lon": 106.8524
+      "lat": -6.1539747814,
+      "lon": 106.829135432
     },
-    "isVerified": false,
-    "notes": "Unverified coordinates pending official administrative boundary confirmation (Pusat Meteorologi Publik BMKG reference)"
+    "isVerified": true,
+    "notes": "Verified via api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.02.1002 (Kel. Karang Anyar, Kec. Sawah Besar, Jakarta Pusat)"
+  },
+  {
+    "adm4": "31.71.02.1003",
+    "desa": "Kartini",
+    "kecamatan": "Sawah Besar",
+    "kotkab": "Kota Adm. Jakarta Pusat",
+    "provinsi": "DKI Jakarta",
+    "timezone": "Asia/Jakarta",
+    "coordinates": {
+      "lat": -6.1532451786,
+      "lon": 106.8331180859
+    },
+    "isVerified": true,
+    "notes": "Verified via api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.02.1003 (Kel. Kartini, Kec. Sawah Besar, Jakarta Pusat)"
+  },
+  {
+    "adm4": "31.71.02.1004",
+    "desa": "Gunung Sahari Utara",
+    "kecamatan": "Sawah Besar",
+    "kotkab": "Kota Adm. Jakarta Pusat",
+    "provinsi": "DKI Jakarta",
+    "timezone": "Asia/Jakarta",
+    "coordinates": {
+      "lat": -6.1492153696,
+      "lon": 106.838283317
+    },
+    "isVerified": true,
+    "notes": "Verified via api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.02.1004 (Kel. Gunung Sahari Utara, Kec. Sawah Besar, Jakarta Pusat)"
+  },
+  {
+    "adm4": "31.71.02.1005",
+    "desa": "Mangga Dua Selatan",
+    "kecamatan": "Sawah Besar",
+    "kotkab": "Kota Adm. Jakarta Pusat",
+    "provinsi": "DKI Jakarta",
+    "timezone": "Asia/Jakarta",
+    "coordinates": {
+      "lat": -6.1420749004,
+      "lon": 106.8282602569
+    },
+    "isVerified": true,
+    "notes": "Verified via api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.02.1005 (Kel. Mangga Dua Selatan, Kec. Sawah Besar, Jakarta Pusat)"
   }
 ]

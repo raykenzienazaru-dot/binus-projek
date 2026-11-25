@@ -42,26 +42,26 @@ export const Model2BotanicalView: React.FC<Model2BotanicalViewProps> = ({
   return (
     <div className="space-y-6">
       {/* 1. MODEL SPECIFICATION & HEADER */}
-      <section className="agra-card p-5 sm:p-6 shadow-xs border-l-4 border-l-[#56612E]">
+      <section className="agra-card border-t-[3px] border-t-emerald-500 p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-bold text-[#56612E] uppercase tracking-widest flex items-center gap-1.5 font-mono">
-                <Leaf size={13} className="text-[#56612E]" />
+              <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                <Leaf size={13} className="text-emerald-600" />
                 <span>Primary Named Reference: grenvis_sensor_model.h</span>
               </span>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#E5EBE8] text-[#2C2922] border border-[#DCE4E1]">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
                 ANN · Multi-Layer Perceptron
               </span>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#E5EBE8] text-[#56612E] border border-[#DCE4E1]">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">
                 Botanical &amp; Soil Hydrology
               </span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#2C2922] font-display mt-1">
-              Model 2 — Botanical &amp; Environmental Risk Evaluation
+            <h2 className="text-xl sm:text-2xl font-bold text-[#102A24] font-display mt-1">
+              Model Botani — Botanical &amp; Environmental Risk Evaluation
             </h2>
-            <p className="text-xs text-[#4D6A75] mt-1 max-w-3xl leading-relaxed">
-              Model inferensi botani berbasis Artificial Neural Network (<code className="font-mono text-[#4E8577]">grenvis_sensor_model.h</code>) yang mengintegrasikan mikroklimat kanopi DHT22 dan kelembapan perakaran tanah untuk mendeteksi stres fisiologis vegetasi.
+            <p className="text-xs sm:text-sm text-[#46655D] mt-1 max-w-3xl leading-relaxed">
+              Model inferensi botani berbasis Artificial Neural Network (<code className="font-mono text-[#0F766E]">grenvis_sensor_model.h</code>) yang mengintegrasikan mikroklimat kanopi DHT22 dan kelembapan perakaran tanah untuk mendeteksi stres fisiologis vegetasi.
             </p>
           </div>
 
@@ -160,83 +160,83 @@ export const Model2BotanicalView: React.FC<Model2BotanicalViewProps> = ({
                     </span>
                     <span className="text-[9px] font-mono text-[#7E694F]">GPIO 34 · ADC1</span>
                   </div>
-                  <span className="text-2xl font-bold font-tabular text-[#2C2922] block mt-1">
-                    {isLiveValid && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : '0.0%'}
+                  <span className="text-2xl font-bold font-tabular text-[#102A24] block mt-1">
+                    {isLiveValid && typeof soilMoisture === 'number' ? `${soilMoisture.toFixed(1)}%` : 'Unavailable'}
                   </span>
-                  <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                  <p className="text-xs text-[#46655D] mt-1 leading-snug">
                     Kelembapan tanah perakaran. Mengontrol evapotranspirasi serasah dasar kanopi.
                   </p>
                 </div>
                 <div className="w-full h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden mt-2.5">
                   <div
                     style={{ width: `${isLiveValid && typeof soilMoisture === 'number' ? Math.min(100, Math.max(0, soilMoisture)) : 0}%` }}
-                    className={`h-full ${typeof soilMoisture === 'number' && soilMoisture < 25 ? 'bg-[#DC2626]' : typeof soilMoisture === 'number' && soilMoisture < 35 ? 'bg-[#D97706]' : 'bg-[#56612E]'}`}
+                    className={`h-full ${typeof soilMoisture === 'number' && soilMoisture < 25 ? 'bg-rose-500' : typeof soilMoisture === 'number' && soilMoisture < 35 ? 'bg-amber-500' : 'bg-emerald-500'}`}
                   />
                 </div>
               </div>
 
               {/* Card 2: Air Temp */}
-              <div className="p-3.5 rounded-xl bg-[#F8FAF9] border border-[#DCE4E1] flex flex-col justify-between">
+              <div className="p-3.5 rounded-xl bg-[#F2F8F5] border border-[#CFE2D9] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-[#4E8577] uppercase flex items-center gap-1 font-mono">
-                      <Thermometer size={13} className="text-[#DC2626]" />
+                    <span className="text-[11px] font-bold text-orange-700 uppercase flex items-center gap-1 font-mono">
+                      <Thermometer size={13} className="text-orange-600" />
                       <span>Suhu Ambien (DHT22)</span>
                     </span>
-                    <span className="text-[9px] font-mono text-[#7E694F]">GPIO 19</span>
+                    <span className="text-[11px] font-mono text-[#46655D]">GPIO 4</span>
                   </div>
-                  <span className="text-2xl font-bold font-tabular text-[#2C2922] block mt-1">
+                  <span className="text-2xl font-bold font-tabular text-[#102A24] block mt-1">
                     {isLiveValid && typeof temp === 'number' ? `${temp.toFixed(1)}°C` : 'Unavailable'}
                   </span>
-                  <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                  <p className="text-xs text-[#46655D] mt-1 leading-snug">
                     Suhu mikroklimat tajuk tanaman. Mempengaruhi laju transpirasi stomata.
                   </p>
                 </div>
                 <div className="w-full h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden mt-2.5">
                   <div
                     style={{ width: `${isLiveValid && typeof temp === 'number' ? Math.min(100, Math.max(0, (temp / 45) * 100)) : 0}%` }}
-                    className="h-full bg-[#4E8577]"
+                    className="h-full bg-orange-500"
                   />
                 </div>
               </div>
 
               {/* Card 3: Relative Humidity */}
-              <div className="p-3.5 rounded-xl bg-[#F8FAF9] border border-[#DCE4E1] flex flex-col justify-between">
+              <div className="p-3.5 rounded-xl bg-[#F2F8F5] border border-[#CFE2D9] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-[#4D6A75] uppercase flex items-center gap-1 font-mono">
-                      <Droplets size={13} className="text-[#4E8577]" />
+                    <span className="text-[11px] font-bold text-sky-700 uppercase flex items-center gap-1 font-mono">
+                      <Droplets size={13} className="text-sky-600" />
                       <span>Kelembapan Udara (RH)</span>
                     </span>
-                    <span className="text-[9px] font-mono text-[#7E694F]">GPIO 19</span>
+                    <span className="text-[11px] font-mono text-[#46655D]">GPIO 4</span>
                   </div>
-                  <span className="text-2xl font-bold font-tabular text-[#2C2922] block mt-1">
+                  <span className="text-2xl font-bold font-tabular text-[#102A24] block mt-1">
                     {isLiveValid && typeof rh === 'number' ? `${rh.toFixed(1)}%` : 'Unavailable'}
                   </span>
-                  <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
+                  <p className="text-xs text-[#46655D] mt-1 leading-snug">
                     Kelembapan relatif kanopi. Nilai rendah (&lt;40%) memicu stres penguapan cepat.
                   </p>
                 </div>
                 <div className="w-full h-1.5 bg-[#E5EBE8] rounded-full overflow-hidden mt-2.5">
                   <div
                     style={{ width: `${isLiveValid && typeof rh === 'number' ? Math.min(100, Math.max(0, rh)) : 0}%` }}
-                    className="h-full bg-[#4D6A75]"
+                    className="h-full bg-sky-500"
                   />
                 </div>
               </div>
 
               {/* Card 4: Vapor Pressure Deficit */}
-              <div className="p-3.5 rounded-xl bg-[#F8FAF9] border border-[#DCE4E1] flex flex-col justify-between">
+              <div className="p-3.5 rounded-xl bg-[#F2F8F5] border border-[#CFE2D9] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-[#7E694F] uppercase flex items-center gap-1 font-mono">
-                      <Activity size={13} className="text-[#7E694F]" />
+                    <span className="text-[11px] font-bold text-amber-700 uppercase flex items-center gap-1 font-mono">
+                      <Activity size={13} className="text-amber-600" />
                       <span>Vapor Pressure Deficit</span>
                     </span>
-                    <span className="text-[9px] font-mono text-[#7E694F]">VPD (kPa)</span>
+                    <span className="text-[11px] font-mono text-[#46655D]">VPD (kPa)</span>
                   </div>
-                  <span className="text-2xl font-bold font-tabular text-[#2C2922] block mt-1">
-                    {isLiveValid ? `${vpd.toFixed(2)} ` : '0.00 '}<span className="text-xs font-normal">kPa</span>
+                  <span className="text-2xl font-bold font-tabular text-[#102A24] block mt-1">
+                    {isLiveValid ? `${vpd.toFixed(2)} ` : '-- '}<span className="text-xs font-normal">kPa</span>
                   </span>
                   <p className="text-[11px] text-[#4D6A75] mt-1 leading-snug">
                     Tekanan defisit uap air atmosfer. Rentang agronomis ideal: 0.8 s.d 1.5 kPa.
@@ -252,9 +252,9 @@ export const Model2BotanicalView: React.FC<Model2BotanicalViewProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-[#DCE4E1] text-[11px] text-[#4D6A75] flex items-center justify-between">
-            <span>Sinyal Input: {isLiveValid && typeof temp === 'number' && typeof rh === 'number' && typeof soilMoisture === 'number' ? `[DHT22 Suhu ${temp.toFixed(1)}°C, RH ${rh.toFixed(0)}%, Soil ${soilMoisture.toFixed(1)}%]` : '[Device Offline · Sensor 0.0]'}</span>
-            <span className="font-mono text-[#56612E]">
+          <div className="mt-4 pt-3 border-t border-[#CFE2D9] text-xs text-[#46655D] flex items-center justify-between flex-wrap gap-2">
+            <span>Sinyal Input: {isLiveValid && typeof temp === 'number' && typeof rh === 'number' && typeof soilMoisture === 'number' ? `[DHT22 Suhu ${temp.toFixed(1)}°C, RH ${rh.toFixed(0)}%, Soil ${soilMoisture.toFixed(1)}%]` : '[Device Offline · Menunggu Telemetri ESP32]'}</span>
+            <span className="font-mono text-[#0F766E] font-semibold">
               {isLiveValid ? 'Live Telemetri Gateway' : 'Device Offline'}
             </span>
           </div>

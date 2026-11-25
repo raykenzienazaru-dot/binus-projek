@@ -13,7 +13,12 @@ import {
   normalizeForecastStep,
   getTimezoneLabel,
 } from './bmkgForecastParser.ts';
-import { parseBmkgWarnings } from './bmkgWarningParser.ts';
+import {
+  extractCapCodeFromUrl,
+  mergeCapDetailAlert,
+  parseBmkgWarnings,
+} from './bmkgWarningParser.ts';
+import { buildCapDetailEndpointUrl } from './bmkgTransport.ts';
 import {
   evaluateCacheFreshness,
   formatDataAge,
@@ -337,21 +342,27 @@ test('10. Service state transitions with mock fixtures and fallback', async () =
   assert.strictEqual(state4.forecast, null); // Suppressed from active display
 });
 
-test('11. Verify preset administrative configurations and unverified status', () => {
+test('11. Verify preset administrative configurations for Kec. Sawah Besar', () => {
   const presetsJson = JSON.parse(
     fs.readFileSync(new URL('../data/indonesiaAdm4Presets.json', import.meta.url), 'utf-8')
   ) as BmkgRegionRecord[];
 
-  const gambir = presetsJson.find((p) => p.adm4 === '31.71.01.1001');
-  assert.ok(gambir);
-  assert.strictEqual(gambir!.isVerified, true);
-  assert.strictEqual(gambir!.coordinates.lat, -6.1763842693);
-  assert.strictEqual(gambir!.coordinates.lon, 106.8267073562);
-
-  const kemayoran = presetsJson.find((p) => p.adm4 === '31.71.03.1001');
-  assert.ok(kemayoran);
-  // MANDATORY RULE: Kemayoran must be marked false until official boundary confirmation!
-  assert.strictEqual(kemayoran!.isVerified, false);
+  assert.strictEqual(presetsJson.length, 5);
+  const expectedAdm4 = [
+    '31.71.02.1001',
+    '31.71.02.1002',
+    '31.71.02.1003',
+    '31.71.02.1004',
+    '31.71.02.1005',
+  ];
+  for (const adm4 of expectedAdm4) {
+    const preset = presetsJson.find((p) => p.adm4 === adm4);
+    assert.ok(preset, `Preset ${adm4} wajib tersedia`);
+    assert.strictEqual(preset!.kecamatan, 'Sawah Besar');
+    assert.strictEqual(preset!.kotkab, 'Kota Adm. Jakarta Pusat');
+    assert.ok(preset!.desa.length > 0);
+    assert.strictEqual(preset!.isVerified, true);
+  }
 });
 
 test('12. Namespaced CAP/XML elements parsing (e.g. <cap:event>, <cap:polygon>)', () => {
@@ -630,4 +641,123 @@ test('19. Accurate timezone label resolution without indiscriminate WIB labeling
   assert.strictEqual(getTimezoneLabel('UTC'), 'UTC');
 });
 
+test('20. Extract CAP code, build bilingual endpoint URL, and merge CAP detail XML polygons', () => {
+  const capCode = extractCapCodeFromUrl(
+    'https://www.bmkg.go.id/alerts/nowcast/id/CSU20261125006_alert.xml'
+  );
+  assert.strictEqual(capCode, 'CSU20261125006');
+  assert.strictEqual(extractCapCodeFromUrl('https://www.bmkg.go.id/alerts/nowcast/en'), null);
+
+  assert.strictEqual(
+    buildCapDetailEndpointUrl('CSU20261125006', 'id'),
+    '/api/bmkg/nowcast/id/CSU20261125006_alert.xml'
+  );
+  assert.strictEqual(
+    buildCapDetailEndpointUrl('CSU20261125006_alert.xml', 'en'),
+    '/api/bmkg/nowcast/en/CSU20261125006_alert.xml'
+  );
+
+  const sawahBesarRegion: BmkgRegionRecord = {
+    adm4: '31.71.02.1001',
+    desa: 'Pasar Baru',
+    kecamatan: 'Sawah Besar',
+    kotkab: 'Kota Adm. Jakarta Pusat',
+    provinsi: 'DKI Jakarta',
+    coordinates: { lat: -6.1660294705, lon: 106.8344840159 },
+    timezone: 'Asia/Jakarta',
+    isVerified: true,
+  };
+
+  const baseParsed = parseBmkgWarnings(
+    `<rss version="2.0"><channel><item>
+      <title>Hujan Lebat disertai Angin Kencang di DKI Jakarta</title>
+      <link>https://www.bmkg.go.id/alerts/nowcast/id/CSU20261125006_alert.xml</link>
+      <description>Berpotensi terjadi hujan sedang hingga lebat di Sawah Besar, Jakarta Pusat.</description>
+    </item></channel></rss>`,
+    sawahBesarRegion
+  );
+  assert.strictEqual(baseParsed.alerts.length, 1);
+
+  const capDetailXml = `<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <info>
+    <language>id-ID</language>
+    <event>Hujan Lebat &amp; Petir</event>
+    <urgency>Immediate</urgency>
+    <severity>Severe</severity>
+    <certainty>Observed</certainty>
+    <senderName>BMKG Stasiun Meteorologi</senderName>
+    <effective>2026-11-25T13:00:00+07:00</effective>
+    <expires>2026-11-25T16:30:00+07:00</expires>
+    <headline>Peringatan Dini Cuaca Ekstrem Sawah Besar</headline>
+    <description>Hujan sedang hingga lebat berpotensi melanda Kecamatan Sawah Besar, Jakarta Pusat.</description>
+    <area>
+      <areaDesc>Sawah Besar, Kota Adm. Jakarta Pusat</areaDesc>
+      <polygon>-6.14,106.82 -6.14,106.85 -6.18,106.85 -6.18,106.82 -6.14,106.82</polygon>
+    </area>
+  </info>
+</alert>`;
+
+  const merged = mergeCapDetailAlert(baseParsed.alerts[0], capDetailXml, sawahBesarRegion);
+  assert.strictEqual(merged.capDetailLoaded, true);
+  assert.strictEqual(merged.severity, 'Severe');
+  assert.strictEqual(merged.urgency, 'Immediate');
+  assert.strictEqual(merged.certainty, 'Observed');
+  assert.strictEqual(merged.areaDesc, 'Sawah Besar, Kota Adm. Jakarta Pusat');
+  assert.strictEqual(merged.applicability, 'GEOGRAPHIC_MATCH');
+  assert.ok(merged.polygonCoordinates && merged.polygonCoordinates.length >= 4);
+  assert.strictEqual(merged.expiresTime, '2026-11-25T09:30:00.000Z');
+});
+
+test('21. Bilingual nowcast warnings cache isolation between lang id and en', async () => {
+  clearBmkgCache();
+  const sawahBesarRegion: BmkgRegionRecord = {
+    adm4: '31.71.02.1002',
+    desa: 'Karang Anyar',
+    kecamatan: 'Sawah Besar',
+    kotkab: 'Kota Adm. Jakarta Pusat',
+    provinsi: 'DKI Jakarta',
+    coordinates: { lat: -6.1539747814, lon: 106.829135432 },
+    timezone: 'Asia/Jakarta',
+    isVerified: true,
+  };
+
+  const idXml = `<rss version="2.0"><channel><item>
+    <title>Peringatan Hujan Lebat DKI Jakarta</title>
+    <link>https://www.bmkg.go.id/alerts/nowcast/id/CSU20261125005_alert.xml</link>
+    <description>Hujan sedang hingga lebat berpotensi di Sawah Besar, Jakarta Pusat.</description>
+    <expires>2026-11-25T16:30:00Z</expires>
+  </item></channel></rss>`;
+
+  const enXml = `<rss version="2.0"><channel><item>
+    <title>Heavy Rain and Lightning Warning in DKI Jakarta</title>
+    <link>https://www.bmkg.go.id/alerts/nowcast/en/CSU20261125006_alert.xml</link>
+    <description>Moderate to heavy rain expected across Sawah Besar, Central Jakarta.</description>
+    <expires>2026-11-25T16:30:00Z</expires>
+  </item></channel></rss>`;
+
+  const now = Date.parse('2026-11-25T12:00:00Z');
+  const alertsId = await getBmkgWarnings(sawahBesarRegion, {
+    lang: 'id',
+    mockXml: idXml,
+    now,
+  });
+  const alertsEn = await getBmkgWarnings(sawahBesarRegion, {
+    lang: 'en',
+    mockXml: enXml,
+    now,
+  });
+  const cachedEn = await getBmkgWarnings(sawahBesarRegion, {
+    lang: 'en',
+    now: now + 1000,
+  });
+
+  assert.strictEqual(alertsId.length, 1);
+  assert.strictEqual(alertsId[0].capCode, 'CSU20261125005');
+  assert.strictEqual(alertsEn.length, 1);
+  assert.strictEqual(alertsEn[0].capCode, 'CSU20261125006');
+  assert.strictEqual(alertsEn[0].isJakartaRelevant, true);
+  assert.strictEqual(cachedEn.length, 1);
+  assert.strictEqual(cachedEn[0].capCode, 'CSU20261125006');
+});
 

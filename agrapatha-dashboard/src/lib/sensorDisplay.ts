@@ -35,34 +35,6 @@ export function formatSensorValue(
 }
 
 /**
- * Formats ambient light lux specifically (supports 'k' suffix for large values).
- */
-export function formatLightLuxValue(
-  lux: number | null | undefined,
-  isLiveValid: boolean,
-  fallback = 'Unavailable'
-): string {
-  if (isLiveValid && typeof lux === 'number' && Number.isFinite(lux)) {
-    return lux >= 1000 ? `${(lux / 1000).toFixed(1)}k` : String(Math.round(lux));
-  }
-  return fallback;
-}
-
-/**
- * Formats gas concentration for MQ-135 (ppm / integer).
- */
-export function formatGasValue(
-  value: number | null | undefined,
-  isLiveValid: boolean,
-  fallback = 'Unavailable'
-): string {
-  if (isLiveValid && typeof value === 'number' && Number.isFinite(value)) {
-    return String(Math.round(value));
-  }
-  return fallback;
-}
-
-/**
  * Formats flame sensor reading (0 = aman, 1 = flame).
  */
 export function formatFlameValue(
@@ -80,11 +52,11 @@ export function formatFlameValue(
 }
 
 /**
- * Returns explicit status label for sensor cards.
+ * Returns explicit status label for active sensor & BMKG cards.
  * Returns 'NOT CONNECTED' or 'STALE' when live validity is false, never deriving false environmental categories.
  */
 export function getSensorStatusLabel(
-  sensorType: 'temp' | 'rh' | 'soil' | 'mq135' | 'flame' | 'ffmc' | 'rain' | 'light',
+  sensorType: 'temp' | 'rh' | 'soil' | 'flame' | 'bmkg_rain' | 'bmkg_wind',
   value: number | null | undefined,
   isLiveValid: boolean,
   auxiliaryStatus?: string | null,
@@ -96,29 +68,23 @@ export function getSensorStatusLabel(
 
   switch (sensorType) {
     case 'temp':
-      return value >= 28 ? 'SUHU TINGGI' : value <= 15 ? 'SEJUK' : 'OPTIMAL';
+      return value >= 32 ? 'SUHU TINGGI' : value <= 20 ? 'SEJUK' : 'OPTIMAL';
     case 'rh':
       return value < 35 ? 'KERING KRITIS' : value > 80 ? 'LEMBAP TINGGI' : 'MODERAT';
     case 'soil':
-      return value < 25 ? 'TANAH KERING' : value > 75 ? 'BASAH JENUH' : 'LEMBAP SUBUR';
-    case 'mq135': {
-      if (auxiliaryStatus) return auxiliaryStatus.toUpperCase();
-      return value >= 1000 ? 'GAS TINGGI' : value >= 400 ? 'MODERAT' : 'NORMAL';
-    }
+      return value < 35 ? 'TANAH KERING' : value > 80 ? 'BASAH JENUH' : 'LEMBAP SUBUR';
     case 'flame': {
       if (auxiliaryStatus) return auxiliaryStatus.toUpperCase();
       return value > 0 ? 'FLAME DETECTED' : 'AMAN';
     }
-    case 'rain': {
+    case 'bmkg_rain': {
       const status = auxiliaryStatus ? auxiliaryStatus.toUpperCase() : '';
       if (status.includes('LEBAT') || value >= 5.0) return 'HUJAN LEBAT';
-      if (status.includes('HUJAN') || status.includes('GERIMIS') || value > 0) return 'GERIMIS';
-      return 'TIDAK HUJAN';
+      if (status.includes('HUJAN') || status.includes('GERIMIS') || value > 0) return 'BERPOTENSI HUJAN';
+      return 'CERAH / BERAWAN';
     }
-    case 'light':
-      return value > 45000 ? 'TERIK INTENS' : value > 12000 ? 'TERANG SIANG' : 'TEDUH / MALAM';
-    case 'ffmc':
-      return value >= 89.5 ? 'ZONA PENYALAAN' : value >= 82.0 ? 'PENGERINGAN' : 'KADAR AIR AMAN';
+    case 'bmkg_wind':
+      return value >= 25 ? 'ANGIN KENCANG' : value >= 12 ? 'ANGIN SEDANG' : 'ANGIN TENANG';
     default:
       return isStale ? 'STALE' : 'NOT CONNECTED';
   }
@@ -138,7 +104,6 @@ export function getDeviceConnectivityStatus(
   wrapperClass: string;
   isOnline: boolean;
 } {
-  // Fresh valid live telemetry from physical ESP32
   if (isLiveTelemetry && !isTelemetryStale) {
     return {
       text: 'DEVICE ONLINE · LIVE',
@@ -148,7 +113,6 @@ export function getDeviceConnectivityStatus(
     };
   }
 
-  // Telemetry was streaming but has stopped / exceeded 10s watchdog
   if (isLiveTelemetry && isTelemetryStale) {
     return {
       text: 'DEVICE OFFLINE (STALE TELEMETRY)',
@@ -158,7 +122,6 @@ export function getDeviceConnectivityStatus(
     };
   }
 
-  // Gateway SSE is connected, but broker is disconnected or no telemetry received yet
   if (gatewayStatus === 'connected') {
     if (!mqttConnected) {
       return {
@@ -176,7 +139,6 @@ export function getDeviceConnectivityStatus(
     };
   }
 
-  // Gateway connecting
   if (gatewayStatus === 'connecting') {
     return {
       text: 'CONNECTING TO GATEWAY...',
@@ -186,7 +148,6 @@ export function getDeviceConnectivityStatus(
     };
   }
 
-  // Gateway closed or error
   return {
     text: 'GATEWAY OFFLINE',
     dotClass: 'bg-[#DC2626]',
@@ -196,7 +157,7 @@ export function getDeviceConnectivityStatus(
 }
 
 /**
- * Strict safety check for Model 1 and Model 2 evaluation.
+ * Strict safety check for AI model evaluation.
  * Returns false if telemetry is offline, stale, or any required feature is missing.
  */
 export function isModelEvaluationPermitted(
@@ -214,4 +175,3 @@ export function isModelEvaluationPermitted(
   }
   return true;
 }
-

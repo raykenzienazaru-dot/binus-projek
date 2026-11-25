@@ -17,6 +17,27 @@ export interface ParseWarningResult {
 }
 
 /**
+ * Extracts `{kode_detail_cap}` from a BMKG CAP detail link such as
+ * `https://www.bmkg.go.id/alerts/nowcast/id/CSU20261125006_alert.xml`.
+ */
+export function extractCapCodeFromUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const match = /\/([A-Za-z0-9_-]{4,32})_alert\.xml(?:\?.*)?$/i.exec(url.trim());
+  return match ? match[1] : null;
+}
+
+function isTextJakartaRelevant(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('sawah besar') ||
+    lower.includes('jakarta pusat') ||
+    lower.includes('dki jakarta') ||
+    lower.includes('jakarta') ||
+    lower.includes('jabodetabek')
+  );
+}
+
+/**
  * Extracts all matching tag text contents safely from an XML Element,
  * matching with or without XML namespace prefixes (e.g. <cap:event> and <event>).
  */
@@ -92,6 +113,12 @@ interface RawExtractedItem {
   effective: string;
   expires: string;
   senderName: string;
+  severity: string;
+  urgency: string;
+  certainty: string;
+  areaDesc: string;
+  web: string;
+  isCapInfo: boolean;
   polygons: string[];
 }
 
@@ -140,7 +167,13 @@ function parseXmlItemsRegex(xmlString: string): RawExtractedItem[] {
     const effective = extractFirst('effective');
     const expires = extractFirst('expires');
     const senderName = extractFirst('senderName') || extractFirst('sender');
+    const severity = extractFirst('severity');
+    const urgency = extractFirst('urgency');
+    const certainty = extractFirst('certainty');
+    const areaDesc = extractFirst('areaDesc');
+    const web = extractFirst('web');
     const polygons = extractAll('polygon');
+    const isCapInfo = /^<(?:[a-zA-Z0-9_-]+:)?info\b/i.test(match[0]);
 
     if (title || headline || description || event) {
       items.push({
@@ -154,6 +187,12 @@ function parseXmlItemsRegex(xmlString: string): RawExtractedItem[] {
         effective,
         expires,
         senderName,
+        severity,
+        urgency,
+        certainty,
+        areaDesc,
+        web,
+        isCapInfo,
         polygons,
       });
     }
@@ -211,12 +250,18 @@ export function parseBmkgWarnings(
         const link = getTagText(item, 'link');
         const description = getTagText(item, 'description');
         const pubDate = getTagText(item, 'pubDate');
-        const guid = getTagText(item, 'guid') || getTagText(item, 'identifier');
+        const guid = getTagText(item, 'guid') || getTagText(item, 'identifier') || getTagText(doc.documentElement, 'identifier');
         const headline = getTagText(item, 'headline') || title;
         const event = getTagText(item, 'event') || 'Peringatan Dini Cuaca';
         const effective = getTagText(item, 'effective') || pubDate;
         const expires = getTagText(item, 'expires');
         const sender = getTagText(item, 'senderName') || getTagText(item, 'sender') || 'BMKG';
+        const severity = getTagText(item, 'severity');
+        const urgency = getTagText(item, 'urgency');
+        const certainty = getTagText(item, 'certainty');
+        const areaDesc = getTagText(item, 'areaDesc');
+        const web = getTagText(item, 'web');
+        const isCapInfo = (item.localName || item.tagName.split(':').pop() || '').toLowerCase() === 'info';
         const polygonStrings = getAllTagTexts(item, 'polygon');
 
         const normalized = createNormalizedAlert({
@@ -229,6 +274,12 @@ export function parseBmkgWarnings(
           effective,
           expires,
           sender,
+          severity,
+          urgency,
+          certainty,
+          areaDesc,
+          web,
+          isCapInfo,
           polygonStrings,
           selectedRegion,
           index: i,
@@ -271,6 +322,12 @@ function parseWithRegexFallback(
       effective: raw.effective || raw.pubDate || '',
       expires: raw.expires || '',
       sender: raw.senderName || 'BMKG',
+      severity: raw.severity || '',
+      urgency: raw.urgency || '',
+      certainty: raw.certainty || '',
+      areaDesc: raw.areaDesc || '',
+      web: raw.web || '',
+      isCapInfo: raw.isCapInfo,
       polygonStrings: raw.polygons,
       selectedRegion,
       index: i,
@@ -295,6 +352,12 @@ interface AlertRawParams {
   effective: string;
   expires: string;
   sender: string;
+  severity?: string;
+  urgency?: string;
+  certainty?: string;
+  areaDesc?: string;
+  web?: string;
+  isCapInfo?: boolean;
   polygonStrings: string[];
   selectedRegion?: BmkgRegionRecord | null;
   index: number;
@@ -310,6 +373,12 @@ function createNormalizedAlert(params: AlertRawParams): BmkgNormalizedAlert | nu
     effective,
     expires,
     sender,
+    severity,
+    urgency,
+    certainty,
+    areaDesc,
+    web,
+    isCapInfo,
     polygonStrings,
     selectedRegion,
     index,
@@ -319,6 +388,7 @@ function createNormalizedAlert(params: AlertRawParams): BmkgNormalizedAlert | nu
 
   // Deduplication identifier
   const id = guid || link || `bmkg-alert-${index}-${hashString(`${event}-${effective}-${headline}`)}`;
+  const capCode = extractCapCodeFromUrl(link) || undefined;
 
   // Timestamp and Expiration Validation:
   // RULE: NEVER assign arbitrary 6-hour expiration if source provides none.
@@ -381,8 +451,11 @@ function createNormalizedAlert(params: AlertRawParams): BmkgNormalizedAlert | nu
     }
   }
 
-  // Extract source geographic scope from headline or description
-  const geographicScope = extractGeographicScope(headline, description);
+  // Extract source geographic scope from headline, areaDesc, or description
+  const geographicScope = areaDesc?.trim() || extractGeographicScope(headline, description);
+  const isJakartaRelevant =
+    applicability === 'GEOGRAPHIC_MATCH' ||
+    isTextJakartaRelevant(`${headline} ${description} ${geographicScope}`);
 
   return {
     id,
@@ -398,6 +471,51 @@ function createNormalizedAlert(params: AlertRawParams): BmkgNormalizedAlert | nu
     geographicScope,
     polygonCoordinates: allPolygons[0],
     allPolygons: allPolygons.length > 0 ? allPolygons : undefined,
+    ...(capCode ? { capCode } : {}),
+    ...(severity ? { severity } : {}),
+    ...(urgency ? { urgency } : {}),
+    ...(certainty ? { certainty } : {}),
+    ...(areaDesc ? { areaDesc } : {}),
+    ...(web ? { infographicUrl: web } : {}),
+    isJakartaRelevant,
+    capDetailLoaded: Boolean(isCapInfo || allPolygons.length > 0),
+  };
+}
+
+/**
+ * Merges a fetched CAP detail XML payload (`{kode_detail_cap}_alert.xml`) into an RSS alert.
+ */
+export function mergeCapDetailAlert(
+  baseAlert: BmkgNormalizedAlert,
+  capXml: string,
+  selectedRegion?: BmkgRegionRecord | null
+): BmkgNormalizedAlert {
+  const detailParsed = parseBmkgWarnings(capXml, selectedRegion);
+  if (!detailParsed.success || detailParsed.alerts.length === 0) {
+    return baseAlert;
+  }
+
+  const detail = detailParsed.alerts[0];
+  return {
+    ...baseAlert,
+    event: detail.event || baseAlert.event,
+    headline: detail.headline || baseAlert.headline,
+    description: detail.description || baseAlert.description,
+    effectiveTime: detail.effectiveTime || baseAlert.effectiveTime,
+    expiresTime: detail.expiresTime || baseAlert.expiresTime,
+    validityStatus: detail.expiresTime ? detail.validityStatus : baseAlert.validityStatus,
+    sender: detail.sender || baseAlert.sender,
+    applicability: detail.applicability,
+    geographicScope: detail.areaDesc || detail.geographicScope || baseAlert.geographicScope,
+    polygonCoordinates: detail.polygonCoordinates ?? baseAlert.polygonCoordinates,
+    allPolygons: detail.allPolygons ?? baseAlert.allPolygons,
+    severity: detail.severity || baseAlert.severity,
+    urgency: detail.urgency || baseAlert.urgency,
+    certainty: detail.certainty || baseAlert.certainty,
+    areaDesc: detail.areaDesc || baseAlert.areaDesc,
+    infographicUrl: detail.infographicUrl || baseAlert.infographicUrl,
+    isJakartaRelevant: Boolean(baseAlert.isJakartaRelevant || detail.isJakartaRelevant),
+    capDetailLoaded: true,
   };
 }
 

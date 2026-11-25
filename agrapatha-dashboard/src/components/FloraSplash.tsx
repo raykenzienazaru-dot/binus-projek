@@ -483,7 +483,7 @@ export const FloraSplash: React.FC<FloraSplashProps> = ({ onComplete }) => {
                   </svg>
                 </span>
               </div>
-              <span className="animate-text-flora-color">MODEL_HAZARD.H</span>
+              <span className="animate-text-flora-color">BMKG SAWAH BESAR</span>
               <span className="animate-text-flora-color">PRECISION</span>
             </div>
           </header>
@@ -504,7 +504,7 @@ export const FloraSplash: React.FC<FloraSplashProps> = ({ onComplete }) => {
                   AGRAPATHA SYSTEM
                 </div>
                 <p className="text-xs sm:text-sm text-[#617253] max-w-md mt-3 pl-1 leading-relaxed">
-                  Integrasi langsung <code className="text-[#597C00] font-mono font-bold">model_hazard.h</code> (100-Tree Random Forest) &amp; <code className="text-[#597C00] font-mono font-bold">grenvis_sensor_model.h</code> berbasis dataset Kaggle Montesinho (<strong className="text-[#1B2408]">517 sampel</strong>) dan FLORA Environmental Risk (<strong className="text-[#1B2408]">9.000 sampel</strong>).
+                  Integrasi telemetri <strong className="text-[#1B2408]">DHT22 · Soil v1.2 · Flame 5-Ch</strong>, model AI <code className="text-[#597C00] font-mono font-bold">grenvis_sensor_model.h</code> (<strong className="text-[#1B2408]">9.000 sampel</strong>), Vision MobileNetV2, serta data <strong className="text-[#1B2408]">BMKG Sawah Besar (Jakarta Pusat)</strong>.
                 </p>
               </div>
             </div>
@@ -555,7 +555,7 @@ export const FloraSplash: React.FC<FloraSplashProps> = ({ onComplete }) => {
                 <img src="/agrapatha-logo.png" alt="Logo AGRAPATHA" className="w-5 h-5 object-contain" />
               </span>
               <p className="text-[9px] sm:text-[10px] leading-relaxed select-none animate-text-flora-color-delayed">
-                Autonomous forest fire &amp; botanical observation ecosystem powered by C header Edge-AI (model_hazard.h), FWI microclimate telemetry, and L298N rail actuation.
+                Autonomous wildfire &amp; botanical observation ecosystem powered by grenvis_sensor_model.h, MobileNetV2 Vision AI, BMKG Sawah Besar, and L298N rail actuation.
               </p>
             </div>
           </footer>

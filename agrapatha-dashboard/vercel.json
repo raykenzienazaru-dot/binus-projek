@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/bmkg/forecast",
+      "destination": "https://api.bmkg.go.id/publik/prakiraan-cuaca"
+    },
+    {
+      "source": "/api/bmkg/nowcast/:path*",
+      "destination": "https://www.bmkg.go.id/alerts/nowcast/:path*"
+    }
+  ]
+}

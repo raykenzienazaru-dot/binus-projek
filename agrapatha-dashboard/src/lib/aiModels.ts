@@ -1,29 +1,11 @@
-import { scoreModelHazard } from './modelHazardRaw.ts';
-
 // ============================================================================
-// 1. MODEL 1: model_hazard.h (100-Tree Random Forest Classifier via m2cgen)
-//    Features: [temp, RH, wind, rain, FFMC, DMC]
-//    Classes : ['High', 'Low', 'Moderate'] (Alphabetical LabelEncoder order)
+// 1. MODEL BOTANI ANN: grenvis_sensor_model.h (FLORA Environmental Risk Neural Network)
+//    Trained on Kaggle: raykenzie/flora-environmental-risk-dataset (9,000 rows)
+//    Features: [temperature_c, humidity_percent, soil_moisture_percent]
+//    Classes : ['High', 'Low', 'Moderate']
 // ============================================================================
 
-export interface HazardInferenceResult {
-  riskLevel: 'LOW' | 'MODERATE' | 'HIGH';
-  confidence: number; // 0 - 100
-  highProbability: number; // 0 - 100
-  moderateProbability: number; // 0 - 100
-  lowProbability: number; // 0 - 100
-  rawVector: [number, number, number]; // [P(High), P(Low), P(Moderate)]
-  inputVector: [number, number, number, number, number, number]; // [temp, RH, wind, rain, FFMC, DMC]
-  fwiIndices: {
-    ffmc: number;
-    dmc: number;
-    dc: number;
-    isi: number;
-  };
-  kaggleBinaryPrediction: 'On Fire' | 'safe';
-}
-
-export type ModelHazardResult = HazardInferenceResult;
+import type { BmkgNormalizedAlert, BmkgNormalizedForecast } from '../types/bmkg.ts';
 
 export interface FloraSensorModelResult {
   sensorRisk: 'High' | 'Low' | 'Moderate';
@@ -32,180 +14,6 @@ export interface FloraSensorModelResult {
   lowProbability: number;
   moderateProbability: number;
 }
-
-/**
- * Computes approximate Canadian Forest Fire Weather Index (FWI) components
- * when not explicitly overridden, calibrated to Montesinho forestfires.csv ranges:
- * - FFMC: 18.7 – 96.2 (mean 90.64)
- * - DMC : 1.1 – 291.3 (mean 110.87)
- * - DC  : 7.9 – 860.6 (mean 547.94)
- * - ISI : 0.0 – 56.1  (mean 9.02)
- */
-export function computeFwiComponents(params: {
-  temp: number;
-  rh: number;
-  wind: number;
-  rain: number;
-  soilMoisture?: number;
-  ffmcOverride?: number;
-  dmcOverride?: number;
-  dcOverride?: number;
-  isiOverride?: number;
-}) {
-  const { temp, rh, wind, rain, soilMoisture = 50 } = params;
-
-  const computedFfmc =
-    params.ffmcOverride !== undefined
-      ? params.ffmcOverride
-      : Number(
-          Math.min(
-            96.2,
-            Math.max(
-              18.7,
-              84.5 + (temp - 18.89) * 0.62 - (rh - 44.29) * 0.22 - rain * 6.5 + (wind - 4.02) * 0.35
-            )
-          ).toFixed(1)
-        );
-
-  const computedDmc =
-    params.dmcOverride !== undefined
-      ? params.dmcOverride
-      : Number(
-          Math.min(
-            291.3,
-            Math.max(
-              1.1,
-              110.87 + (temp - 18.89) * 4.8 - (rh - 44.29) * 1.35 - (soilMoisture - 50) * 1.4 - rain * 18.0
-            )
-          ).toFixed(1)
-        );
-
-  const computedDc =
-    params.dcOverride !== undefined
-      ? params.dcOverride
-      : Number(
-          Math.min(
-            860.6,
-            Math.max(7.9, 547.94 + (computedDmc - 110.87) * 2.65 + (temp - 18.89) * 6.2 - rain * 25.0)
-          ).toFixed(1)
-        );
-
-  // Empirical ISI relationship from FFMC and Wind in FWI system
-  const computedIsi =
-    params.isiOverride !== undefined
-      ? params.isiOverride
-      : Number(
-          Math.min(
-            56.1,
-            Math.max(
-              0.0,
-              computedFfmc < 75
-                ? 0.8 + wind * 0.18
-                : ((computedFfmc - 70) / 26.2) * (4.5 + wind * 1.35)
-            )
-          ).toFixed(1)
-        );
-
-  return {
-    ffmc: computedFfmc,
-    dmc: computedDmc,
-    dc: computedDc,
-    isi: computedIsi,
-  };
-}
-
-/**
- * Executes the exact 100-tree C Random Forest model from `model_hazard.h`
- * Signature in C: `void score(double * input, double * output)`
- * Feature order: `[temp, RH, wind, rain, FFMC, DMC]`
- */
-export function evaluateModelHazard(params?: {
-  temp?: number | null;
-  rh?: number | null;
-  wind?: number | null;
-  rain?: number | null;
-  ffmc?: number | null;
-  dmc?: number | null;
-  dc?: number | null;
-  isi?: number | null;
-}): HazardInferenceResult | null {
-  if (!params) return null;
-  const { temp, rh, wind, rain, ffmc, dmc } = params;
-  if (
-    typeof temp !== 'number' || !Number.isFinite(temp) ||
-    typeof rh !== 'number' || !Number.isFinite(rh) ||
-    typeof wind !== 'number' || !Number.isFinite(wind) ||
-    typeof rain !== 'number' || !Number.isFinite(rain) ||
-    typeof ffmc !== 'number' || !Number.isFinite(ffmc) ||
-    typeof dmc !== 'number' || !Number.isFinite(dmc)
-  ) {
-    return null;
-  }
-
-  const inputVector: [number, number, number, number, number, number] = [
-    temp,
-    rh,
-    wind,
-    rain,
-    ffmc,
-    dmc,
-  ];
-
-  const raw = scoreModelHazard(inputVector);
-  // Alphabetical class order in model_hazard.h:
-  // raw[0] = High, raw[1] = Low, raw[2] = Moderate
-  const highProb = Number((raw[0] * 100).toFixed(2));
-  const lowProb = Number((raw[1] * 100).toFixed(2));
-  const modProb = Number((raw[2] * 100).toFixed(2));
-
-  let riskLevel: 'LOW' | 'MODERATE' | 'HIGH' = 'LOW';
-  let confidence = lowProb;
-
-  if (highProb >= modProb && highProb >= lowProb) {
-    riskLevel = 'HIGH';
-    confidence = highProb;
-  } else if (modProb >= highProb && modProb >= lowProb) {
-    riskLevel = 'MODERATE';
-    confidence = modProb;
-  } else {
-    riskLevel = 'LOW';
-    confidence = lowProb;
-  }
-
-  const fwi = computeFwiComponents({
-    temp,
-    rh,
-    wind,
-    rain,
-    ffmcOverride: ffmc,
-    dmcOverride: dmc,
-    dcOverride: typeof params.dc === 'number' && Number.isFinite(params.dc) ? params.dc : undefined,
-    isiOverride: typeof params.isi === 'number' && Number.isFinite(params.isi) ? params.isi : undefined,
-  });
-
-  // Binary classification label matching Kaggle notebook (0: 'safe', 1: 'On Fire')
-  const kaggleBinaryPrediction: 'On Fire' | 'safe' =
-    riskLevel === 'HIGH' || (ffmc >= 89.5 && dmc >= 90) ? 'On Fire' : 'safe';
-
-  return {
-    riskLevel,
-    confidence,
-    highProbability: highProb,
-    moderateProbability: modProb,
-    lowProbability: lowProb,
-    rawVector: raw,
-    inputVector,
-    fwiIndices: fwi,
-    kaggleBinaryPrediction,
-  };
-}
-
-// ============================================================================
-// 2. MODEL 2: grenvis_sensor_model.h (FLORA Environmental Risk Neural Network)
-//    Trained on Kaggle: raykenzie/flora-environmental-risk-dataset (9,000 rows)
-//    Features: [temperature_c, humidity_percent, soil_moisture_percent]
-//    Classes : ['High', 'Low', 'Moderate']
-// ============================================================================
 
 export const FLORA_SENSOR_MODEL_CONFIG = {
   classes: ['High', 'Low', 'Moderate'] as const,
@@ -328,123 +136,161 @@ export function evaluateFloraSensorModel(
 }
 
 // ============================================================================
-// 3. EXACT KAGGLE DATASET BENCHMARKS & METADATA
-//    1) https://www.kaggle.com/code/e96031413/forest-fire-area-classification
-//    2) https://www.kaggle.com/datasets/raykenzie/flora-environmental-risk-dataset
+// 2. BMKG SAWAH BESAR <-> LOCAL SENSOR CORRELATION ENGINE
+//    Integrates live BMKG forecast & CAP warnings with ESP32 DHT22, Soil, Flame
 // ============================================================================
 
-export const KAGGLE_FOREST_FIRE_STATS = {
-  datasetTitle: 'Forest Fires Data Set (Montesinho Natural Park, Portugal)',
-  notebookUrl: 'https://www.kaggle.com/code/e96031413/forest-fire-area-classification',
-  totalInstances: 517,
-  trainSplit: 361, // 70%
-  testSplit: 156,  // 30% (random_state=101, support: 69 safe, 87 On Fire)
-  binaryDistribution: {
-    safeCount: 247,   // area == 0 (47.78%)
-    onFireCount: 270, // area > 0  (52.22%)
-  },
-  modelHazardDistribution: {
-    highCount: 338,     // 65.38%
-    moderateCount: 146, // 28.24%
-    lowCount: 33,       // 6.38%
-  },
-  features: {
-    temp: { min: 2.2, max: 33.3, mean: 18.89, std: 5.81, unit: '°C', label: 'Temperature (temp)' },
-    RH: { min: 15.0, max: 100.0, mean: 44.29, std: 16.32, unit: '%', label: 'Relative Humidity (RH)' },
-    wind: { min: 0.4, max: 9.4, mean: 4.02, std: 1.79, unit: 'km/h', label: 'Wind Speed (wind)' },
-    rain: { min: 0.0, max: 6.4, mean: 0.02, std: 0.30, unit: 'mm/m²', label: 'Outside Rain (rain)' },
-    FFMC: { min: 18.7, max: 96.2, mean: 90.64, std: 5.52, unit: 'idx', label: 'Fine Fuel Moisture (FFMC)' },
-    DMC: { min: 1.1, max: 291.3, mean: 110.87, std: 64.05, unit: 'idx', label: 'Duff Moisture Code (DMC)' },
-    DC: { min: 7.9, max: 860.6, mean: 547.94, std: 248.07, unit: 'idx', label: 'Drought Code (DC)' },
-    ISI: { min: 0.0, max: 56.1, mean: 9.02, std: 4.56, unit: 'idx', label: 'Initial Spread Index (ISI)' },
-    area: { min: 0.0, max: 1090.84, mean: 12.85, std: 63.66, unit: 'ha', label: 'Burned Area (area)' },
-  },
-  notebookTestVector: {
-    raw: [1, 4, 9, 1, 91.5, 130.1, 807.1, 7.5, 21.3, 35, 2.2, 0],
-    description: 'x_new = [[X=1, Y=4, month=sep(9), day=sun(1), FFMC=91.5, DMC=130.1, DC=807.1, ISI=7.5, temp=21.3, RH=35, wind=2.2, rain=0]]',
-    temp: 21.3,
-    rh: 35.0,
-    wind: 2.2,
-    rain: 0.0,
-    ffmc: 91.5,
-    dmc: 130.1,
-    dc: 807.1,
-    isi: 7.5,
-    prediction: 'On Fire',
-  },
-  classifiersHoldout: [
-    {
-      name: 'KNN (Tuned k=19)',
-      accuracy: 62.82,
-      precision: 65.59,
-      recall: 70.11,
-      f1Weighted: 62.4,
-      confusionMatrix: null,
-      predictionOnXNew: 'On Fire',
-    },
-    {
-      name: 'Support Vector Machine (SVC)',
-      accuracy: 61.54,
-      precision: 60.80,
-      recall: 87.36,
-      f1Weighted: 58.0,
-      confusionMatrix: [
-        [20, 49],
-        [11, 76],
-      ],
-      predictionOnXNew: 'On Fire',
-    },
-    {
-      name: 'KNN (Default k=5)',
-      accuracy: 58.97,
-      precision: 63.22,
-      recall: 63.22,
-      f1Weighted: 59.0,
-      confusionMatrix: [
-        [37, 32],
-        [32, 55],
-      ],
-      predictionOnXNew: 'On Fire',
-    },
-    {
-      name: 'Decision Tree (CART)',
-      accuracy: 53.85,
-      precision: 58.06,
-      recall: 62.07,
-      f1Weighted: 54.0,
-      confusionMatrix: [
-        [30, 39],
-        [33, 54],
-      ],
-      predictionOnXNew: 'On Fire',
-    },
-    {
-      name: 'Gaussian Naive Bayes',
-      accuracy: 48.08,
-      precision: 58.82,
-      recall: 22.99,
-      f1Weighted: 44.0,
-      confusionMatrix: [
-        [55, 14],
-        [67, 20],
-      ],
-      predictionOnXNew: 'On Fire',
-    },
-  ],
-  crossValidation10Fold: [
-    { code: 'SVM', name: 'Support Vector Machine', meanAcc: 48.02, stdAcc: 23.41 },
-    { code: 'KNN', name: 'K-Nearest Neighbors', meanAcc: 46.84, stdAcc: 14.06 },
-    { code: 'MLP', name: 'Multi-Layer Perceptron', meanAcc: 44.14, stdAcc: 13.85 },
-    { code: 'CART', name: 'Decision Tree Classifier', meanAcc: 43.73, stdAcc: 10.90 },
-    { code: 'Bagging', name: 'Bagging Classifier', meanAcc: 42.98, stdAcc: 10.68 },
-    { code: 'GradientBoost', name: 'Gradient Boosting', meanAcc: 42.79, stdAcc: 15.69 },
-    { code: 'ExtraTrees', name: 'Extra Trees Ensemble', meanAcc: 40.86, stdAcc: 14.45 },
-    { code: 'NB', name: 'Gaussian Naive Bayes', meanAcc: 39.75, stdAcc: 18.98 },
-    { code: 'AdaBoost', name: 'AdaBoost Classifier', meanAcc: 39.69, stdAcc: 15.56 },
-    { code: 'LR', name: 'Logistic Regression', meanAcc: 39.52, stdAcc: 15.15 },
-    { code: 'RandomForest', name: 'Random Forest (100 Trees)', meanAcc: 39.11, stdAcc: 14.45 },
-  ],
-};
+export interface BmkgSensorCorrelation {
+  severity: 'NORMAL' | 'ADVISORY' | 'WARNING' | 'CRITICAL';
+  headline: string;
+  advisory: string;
+  tempDeltaC: number | null;
+  rhDeltaPct: number | null;
+  windSpeedKmh: number | null;
+  precipitationMm: number | null;
+  weatherDesc: string | null;
+  hasRainForecast: boolean;
+  hasJakartaAlert: boolean;
+}
+
+export function evaluateBmkgSensorCorrelation(params: {
+  localTemp: number | null;
+  localRh: number | null;
+  localSoil: number | null;
+  flameDetected: number | null;
+  visionPrediction: string | null;
+  bmkgForecast: BmkgNormalizedForecast | null;
+  bmkgAlerts: BmkgNormalizedAlert[];
+}): BmkgSensorCorrelation {
+  const {
+    localTemp,
+    localRh,
+    localSoil,
+    flameDetected,
+    visionPrediction,
+    bmkgForecast,
+    bmkgAlerts,
+  } = params;
+
+  const step = bmkgForecast?.currentStep ?? null;
+  const bmkgTemp = step?.temperatureC ?? null;
+  const bmkgRh = step?.humidityPercent ?? null;
+  const windSpeedKmh = step?.windSpeedKmh ?? null;
+  const precipitationMm = step?.precipitationMm ?? null;
+  const weatherDesc = step?.weatherDesc ?? null;
+
+  const tempDeltaC =
+    typeof localTemp === 'number' && typeof bmkgTemp === 'number'
+      ? Number((localTemp - bmkgTemp).toFixed(1))
+      : null;
+
+  const rhDeltaPct =
+    typeof localRh === 'number' && typeof bmkgRh === 'number'
+      ? Number((localRh - bmkgRh).toFixed(1))
+      : null;
+
+  const hasRainForecast =
+    (typeof precipitationMm === 'number' && precipitationMm >= 0.5) ||
+    Boolean(weatherDesc && /hujan|petir|gerimis/i.test(weatherDesc));
+
+  const hasJakartaAlert = bmkgAlerts.some(
+    (a) => a.applicability === 'GEOGRAPHIC_MATCH' || a.isJakartaRelevant
+  );
+
+  const isFireActive =
+    (typeof flameDetected === 'number' && flameDetected > 0) ||
+    Boolean(visionPrediction && /fire|active surface fire/i.test(visionPrediction));
+
+  if (isFireActive) {
+    return {
+      severity: 'CRITICAL',
+      headline: 'Titik Api Aktif + Korelasi Angin BMKG Sawah Besar',
+      advisory:
+        typeof windSpeedKmh === 'number'
+          ? `Flame 5-Ch / Vision mendeteksi api aktif dengan kecepatan angin BMKG Sawah Besar ${windSpeedKmh.toFixed(1)} km/h. Prioritaskan pemadaman segera — interlock darurat beroperasi independen.`
+          : 'Flame 5-Ch / Vision mendeteksi api aktif. Prioritaskan pemadaman segera.',
+      tempDeltaC,
+      rhDeltaPct,
+      windSpeedKmh,
+      precipitationMm,
+      weatherDesc,
+      hasRainForecast,
+      hasJakartaAlert,
+    };
+  }
+
+  if (typeof localSoil === 'number' && localSoil < 35 && hasRainForecast) {
+    return {
+      severity: 'ADVISORY',
+      headline: 'Tanah Kering vs Prakiraan Hujan BMKG Sawah Besar',
+      advisory: `Kelembapan tanah lokal rendah (${localSoil.toFixed(1)}%), namun BMKG Sawah Besar memprakirakan "${weatherDesc || 'Hujan'}" (${precipitationMm ?? 0} mm). Siram singkat atau pantau hujan alami sebelum irigasi penuh.`,
+      tempDeltaC,
+      rhDeltaPct,
+      windSpeedKmh,
+      precipitationMm,
+      weatherDesc,
+      hasRainForecast,
+      hasJakartaAlert,
+    };
+  }
+
+  if (hasJakartaAlert) {
+    return {
+      severity: 'WARNING',
+      headline: 'Peringatan Dini Nowcast CAP Aktif Area DKI Jakarta / Sawah Besar',
+      advisory:
+        typeof localSoil === 'number' && localSoil > 75
+          ? `Tanah sudah jenuh (${localSoil.toFixed(1)}%) dan Nowcast BMKG aktif. Pastikan Pump Lockout aktif agar perakaran tidak tergenang.`
+          : 'Peringatan dini cuaca BMKG aktif untuk wilayah Jakarta. Siagakan pemantauan DHT22, Soil v1.2, dan kanopi ESP32-CAM.',
+      tempDeltaC,
+      rhDeltaPct,
+      windSpeedKmh,
+      precipitationMm,
+      weatherDesc,
+      hasRainForecast,
+      hasJakartaAlert,
+    };
+  }
+
+  if (tempDeltaC !== null && tempDeltaC >= 3.0) {
+    return {
+      severity: 'ADVISORY',
+      headline: 'Anomali Panas Mikro vs Makro BMKG Sawah Besar',
+      advisory: `Suhu DHT22 lokal +${tempDeltaC.toFixed(1)}°C lebih hangat dari suhu udara BMKG Sawah Besar (${bmkgTemp}°C). Pertimbangkan misting kanopi bila kelembapan tanah menurun.`,
+      tempDeltaC,
+      rhDeltaPct,
+      windSpeedKmh,
+      precipitationMm,
+      weatherDesc,
+      hasRainForecast,
+      hasJakartaAlert,
+    };
+  }
+
+  return {
+    severity: 'NORMAL',
+    headline: step
+      ? `Selaras dengan Cuaca BMKG Sawah Besar (${weatherDesc || 'Stabil'})`
+      : 'Menunggu Sinkronisasi Cuaca BMKG Sawah Besar',
+    advisory:
+      step && typeof localTemp === 'number'
+        ? `Mikroklimat lokal (${localTemp.toFixed(1)}°C / RH ${localRh?.toFixed(0) ?? '--'}%) sinkron dengan makro Sawah Besar (${bmkgTemp}°C / ${bmkgRh}%).`
+        : 'Data makro BMKG Sawah Besar (5 Kelurahan Jakarta Pusat) siap disandingkan dengan telemetri sensor fisik ESP32.',
+    tempDeltaC,
+    rhDeltaPct,
+    windSpeedKmh,
+    precipitationMm,
+    weatherDesc,
+    hasRainForecast,
+    hasJakartaAlert,
+  };
+}
+
+// ============================================================================
+// 3. KAGGLE DATASET BENCHMARKS & ACTIVE MODEL METADATA
+//    1) Botanical ANN: https://www.kaggle.com/datasets/raykenzie/flora-environmental-risk-dataset
+//    2) Vision MobileNetV2: be-binus-production.up.railway.app (3-Class TFLite)
+// ============================================================================
 
 export const KAGGLE_FLORA_DATASET_STATS = {
   datasetTitle: 'FLORA Environmental Risk Dataset',
@@ -460,4 +306,13 @@ export const KAGGLE_FLORA_DATASET_STATS = {
     humidity_percent: { mean: 59.83, std: 14.31, unit: '%', label: 'Relative Humidity (DHT22)' },
     soil_moisture_percent: { mean: 67.15, std: 17.56, unit: '%', label: 'Soil Moisture (Capacitive)' },
   },
+};
+
+export const VISION_MODEL_BENCHMARKS = {
+  modelTitle: 'AGRAPATHA MobileNetV2 TFLite Vision Classifier',
+  architecture: 'MobileNetV2 (224x224 RGB)',
+  runtime: 'ai-edge-litert (be-binus Railway)',
+  classes: ['Fire', 'Smoke', 'Non-Fire'] as const,
+  endpoint: 'https://be-binus-production.up.railway.app/predict/fire',
+  transport: 'ESP32-CAM OV2640 + ESP-NOW -> Main Controller',
 };

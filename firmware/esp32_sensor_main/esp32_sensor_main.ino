@@ -6,15 +6,14 @@
  * SISTEM PENGAMBIL KEPUTUSAN 4 KONDISI MURNI SENSOR ONBOARD ROBOT:
  * 1. KERING      : Soil < 35% (& Suhu > 32°C) -> PERINTAH: Siram Akar & Semprot Misting.
  * 2. BASAH       : Soil > 80% (Jenuh Air)      -> PERINTAH: Kunci Mati Pompa & Parkir Arm.
- * 3. KEBAKARAN   : Flame + MobileNetV2 FIRE    -> PERINTAH: Semprot Pemadam & Evakuasi Rel.
- * 4. GAS BERACUN : MQ-135 > 2200 / Asap SMOKE  -> PERINTAH: Nyalakan Aerasi & Alarm Gas.
+ * 3. KEBAKARAN   : Flame 5-Ch / Vision FIRE    -> PERINTAH: Semprot Pemadam & Evakuasi Rel.
+ * 4. ASAP VISUAL : ESP32-CAM Vision SMOKE      -> PERINTAH: Arahkan Arm & Verifikasi Ulang.
  *
  * KOMUNIKASI, KEAMANAN & AKTUATOR:
  * - Wi-Fi Auto-Connect + Watchdog (SSID: "." | Pass: "01020304").
  * - EMQX Cloud TLS Port 8883 (q2277711.ala.asia-southeast1.emqxsl.com).
  * - 4 Servo Langsung ke GPIO (13, 14, 15, 5) via ESP32Servo (Catu Daya Eksternal 5V-6V 3A).
- * - Sensor Jarak ToF VL53L0X (I2C SDA 21, SCL 22, Alamat 0x29) + Health Check.
- * - Moving Average Filter 5-Sample pada Soil Moisture & MQ-135 + DHT22 Interval >= 2000ms.
+ * - Moving Average Filter 5-Sample pada Soil Moisture + DHT22 Interval >= 2000ms.
  * - Linear Slider 3-Zona L298N (IN1: 16, IN2: 17) + Limit SW (18, 19) + Travel Watchdog.
  * - Pompa Air Relay (GPIO 23, Active LOW, Glitch-Free Init + Watchdog Timer).
  * - Dual-Way MQTT (`agrapatha/telemetry` & `agrapatha/commands`) + ESP-NOW ke ESP32-CAM.
@@ -22,7 +21,6 @@
  */
 
 #include <Arduino.h>
-#include <Wire.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
@@ -30,7 +28,6 @@
 #include <esp_wifi.h>
 #include <DHT.h>
 #include <ESP32Servo.h>
-#include <Adafruit_VL53L0X.h>
 #include <ArduinoJson.h>
 
 // ======================================================
@@ -40,7 +37,6 @@
 #define DHT_TYPE             DHT22
 
 #define SOIL_ANALOG_PIN      34   // ADC1_CH6 (Capacitive Soil Moisture v1.2, Input Only)
-#define MQ135_ANALOG_PIN     35   // ADC1_CH7 (MQ-135 Gas/Smoke via Voltage Divider <= 3.3V)
 
 // 4-DoF Robot Arm Servos (Langsung ke Pin GPIO ESP32)
 #define SERVO_BASE_PIN       13   // Servo 1: Rotasi Basis (Yaw)
@@ -70,10 +66,6 @@
 #define PUMP_RELAY_PIN       23   // Relay Pompa (Aktif LOW)
 #define RELAY_ACTIVE         LOW
 #define RELAY_DEACTIVE       HIGH
-
-// Bus I2C Sensor Jarak VL53L0X
-#define I2C_SDA_PIN          21
-#define I2C_SCL_PIN          22
 
 // ======================================================
 // 2. KREDENSIAL JARINGAN & MQTT EMQX CLOUD
@@ -122,10 +114,6 @@ const char* TOPIC_COMMANDS  = "agrapatha/commands"; // Jalur Menerima Perintah d
 #define THRESH_SOIL_WET         80.0   // > 80%: KONDISI BASAH (Jenuh Air)
 #define THRESH_SOIL_TARGET      60.0   // Target Ideal Kelembapan Tanah
 
-#define THRESH_MQ135_TOXIC      2200   // > 2200 ADC: KONDISI GAS BERACUN / ASAP
-
-#define VL53L0X_MIN_SAFE_MM     120    // Batas aman minimum nozzle ke api
-#define VL53L0X_MAX_SUPPR_MM    380    // Batas efektif semprotan nozzle
 #define SUPPRESSION_DURATION_MS 4000   // Durasi semprot pemadam per siklus
 
 #define IRRIG_MAX_DURATION_MS   12000  // Maksimal pompa siram aktif (watchdog fail-safe)
@@ -160,7 +148,6 @@ typedef struct __attribute__((packed)) {
 // 5. OBJEK & STATE MACHINE
 // ======================================================
 DHT dht(DHT_PIN, DHT_TYPE);
-Adafruit_VL53L0X vl53l0x = Adafruit_VL53L0X();
 
 Servo servoBase;
 Servo servoShoulder;
@@ -184,9 +171,9 @@ enum SystemState {
 enum FireSearchStage {
   STAGE_SERVO1_YAW,       // Tahap 1: Orientasi basis kiri/tengah/kanan
   STAGE_SERVO2_PITCH,     // Tahap 2: Ketinggian arm
-  STAGE_SERVO3_REACH,     // Tahap 3: Jangkauan maju arm (diawasi VL53L0X)
+  STAGE_SERVO3_REACH,     // Tahap 3: Jangkauan maju arm
   STAGE_SERVO4_NOZZLE,    // Tahap 4: Arah presisi nozzle & kamera
-  STAGE_VERIFY_DISTANCE,  // Verifikasi jarak aman sebelum pompa aktif
+  STAGE_VERIFY_FIRE,      // Verifikasi nyala api/visual sebelum pompa aktif
   STAGE_READY_SUPPRESS    // Pompa pemadam aktif
 };
 
@@ -199,12 +186,8 @@ float currentHumidity = 0.0;
 bool dhtHasValidReading = false;
 int rawSoil = 0;
 float soilMoisturePct = 0.0;
-int rawMQ135 = 0;
 bool flameCh[5] = {false, false, false, false, false};
 int activeFlameCount = 0;
-uint16_t targetDistanceMm = 9999;
-bool vl53l0xReady = false;
-bool distanceSensorValid = false;
 
 // AI Vision
 char aiVisionClass[16] = "SAFE";
@@ -235,7 +218,6 @@ unsigned long lastFireStageStepTime = 0;
 // Timers & Flags
 unsigned long lastSensorReadTime = 0;
 unsigned long lastDhtReadTime = 0;
-unsigned long lastVl53RetryTime = 0;
 unsigned long lastMqttPubTime = 0;
 unsigned long lastMqttConnAttempt = 0;
 unsigned long lastWifiAttempt = 0;
@@ -244,14 +226,12 @@ unsigned long commandPumpEndTime = 0;
 unsigned long lastIrrigEndTime = 0;
 bool pumpActive = false;
 bool pumpLockout = false;
-bool ventilationActive = false;
-bool gasAlarmActive = false;
 bool emergencyStopTriggered = false;
 
 // ======================================================
 // STRUKTUR PERINTAH OPERASIONAL (MURNI SENSOR ROBOT)
 // ======================================================
-char envCondition[24]        = "NORMAL";       // "KERING", "BASAH", "KEBAKARAN", "GAS_BERACUN", "NORMAL", "FAULT"
+char envCondition[24]        = "NORMAL";       // "KERING", "BASAH", "KEBAKARAN", "ASAP_VISUAL", "NORMAL", "FAULT"
 char actionCommand[32]       = "CMD_IDLE";
 char commandButtonLabel[48]  = "Sistem Siap";
 char commandPayload[96]      = "{\"cmd\":\"NONE\"}";
@@ -371,7 +351,6 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
   if (strcmp(cmdName, "CMD_RESET_EMERGENCY") == 0) {
     emergencyStopTriggered = false;
     pumpLockout = false;
-    gasAlarmActive = false;
     setPump(false);
     stopSlider();
     currentState = STATE_HOMING;
@@ -469,19 +448,11 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     Serial.println("[EKSEKUSI] Kereta rel dievakuasi ke kiri menjauhi titik panas.");
   }
 
-  // 4. Perintah Terkait Kondisi GAS BERACUN / ASAP
-  else if (strcmp(cmdName, "CMD_VENTILATION_ACTIVE") == 0) {
-    ventilationActive = true;
-    // Arahkan nozzle & arm ke posisi ventilasi atas (45-60 derajat)
-    moveServoSmooth(servoNozzle, angleNozzle, 60, 12);
-    Serial.println("[EKSEKUSI] Mode ventilasi/aerasi & pembersihan gas aktif.");
-  }
-  else if (strcmp(cmdName, "CMD_TRIGGER_GAS_ALARM") == 0) {
-    gasAlarmActive = true;
-    ventilationActive = true;
+  // 4. Perintah Verifikasi Asap Visual (ESP32-CAM MobileNetV2 SMOKE)
+  else if (strcmp(cmdName, "CMD_VERIFY_SMOKE") == 0) {
     stopSlider();
     requestCameraCapture();
-    Serial.println("[EKSEKUSI] ALARM GAS BERACUN DIAKTIFKAN! Kamera memverifikasi asap.");
+    Serial.println("[EKSEKUSI] Verifikasi ulang citra asap visual via ESP32-CAM.");
   }
 
   // 5. Kontrol Robot Arm, Slider Manual, & Trigger Kamera
@@ -569,8 +540,6 @@ void readAllSensors() {
   float pct = ((float)(SOIL_CALIB_DRY - rawSoil) / (float)(SOIL_CALIB_DRY - SOIL_CALIB_WET)) * 100.0;
   soilMoisturePct = constrain(pct, 0.0, 100.0);
 
-  rawMQ135 = readFilteredAdc(MQ135_ANALOG_PIN, 5);
-
   flameCh[0] = (digitalRead(FLAME_CH1_PIN) == FLAME_ACTIVE_STATE);
   flameCh[1] = (digitalRead(FLAME_CH2_PIN) == FLAME_ACTIVE_STATE);
   flameCh[2] = (digitalRead(FLAME_CH3_PIN) == FLAME_ACTIVE_STATE);
@@ -582,37 +551,18 @@ void readAllSensors() {
     if (flameCh[i]) activeFlameCount++;
   }
 
-  if (vl53l0xReady) {
-    VL53L0X_RangingMeasurementData_t measure;
-    vl53l0x.rangingTest(&measure, false);
-    if (measure.RangeStatus != 4) {
-      targetDistanceMm = measure.RangeMilliMeter;
-      distanceSensorValid = (targetDistanceMm >= 30 && targetDistanceMm <= 1200);
-    } else {
-      distanceSensorValid = false;
-      targetDistanceMm = 9999;
-    }
-  } else {
-    distanceSensorValid = false;
-    targetDistanceMm = 9999;
-    if (now - lastVl53RetryTime >= 5000) {
-      lastVl53RetryTime = now;
-      vl53l0xReady = vl53l0x.begin();
-    }
-  }
-
   cameraOnline = (lastAiResultTime > 0 && (now - lastAiResultTime < 12000));
 
   // ====================================================
-  // MESIN PENENTU PERINTAH MURNI 4 KONDISI SENSOR ONBOARD
+  // MESIN PENENTU PERINTAH MURNI SENSOR ONBOARD & VISION AI
   // ====================================================
   bool aiFire  = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0  && aiConfidence >= 0.70);
   bool aiSmoke = (cameraOnline && strcmp(aiVisionClass, "SMOKE") == 0 && aiConfidence >= 0.70);
 
-  bool isFire     = (activeFlameCount > 0 || aiFire);
-  bool isToxicGas = ((rawMQ135 > THRESH_MQ135_TOXIC || aiSmoke) && !isFire);
-  bool isWet      = (soilMoisturePct > THRESH_SOIL_WET);
-  bool isDry      = (soilMoisturePct < THRESH_SOIL_DRY);
+  bool isFire  = (activeFlameCount > 0 || aiFire);
+  bool isSmoke = (aiSmoke && !isFire);
+  bool isWet   = (soilMoisturePct > THRESH_SOIL_WET);
+  bool isDry   = (soilMoisturePct < THRESH_SOIL_DRY);
 
   if (currentState == STATE_ALARM_FAULT || currentState == STATE_EMERGENCY_STOP) {
     // Pertahankan status fault sampai reset operator
@@ -620,7 +570,7 @@ void readAllSensors() {
   }
 
   if (isFire) {
-    // 1. KONDISI KEBAKARAN
+    // 1. KONDISI KEBAKARAN (Flame 5-Ch / Vision FIRE)
     setEnvironmentalCommand(
       "KEBAKARAN",
       "CMD_FIRE_SUPPRESSION",
@@ -628,13 +578,13 @@ void readAllSensors() {
       "{\"cmd\":\"CMD_FIRE_SUPPRESSION\",\"params\":{\"duration\":4000}}"
     );
   }
-  else if (isToxicGas) {
-    // 2. KONDISI GAS BERACUN / ASAP PEKAT
+  else if (isSmoke) {
+    // 2. KONDISI ASAP VISUAL (ESP32-CAM Vision SMOKE)
     setEnvironmentalCommand(
-      "GAS_BERACUN",
-      "CMD_VENTILATION_ACTIVE",
-      "PERINTAH: NYALAKAN AERASI & ALARM GAS",
-      "{\"cmd\":\"CMD_VENTILATION_ACTIVE\"}"
+      "ASAP_VISUAL",
+      "CMD_FIRE_SCAN_START",
+      "PERINTAH: ARAHKAN ARM & VERIFIKASI ASAP",
+      "{\"cmd\":\"CMD_FIRE_SCAN_START\"}"
     );
   }
   else if (isWet) {
@@ -660,8 +610,6 @@ void readAllSensors() {
     if (pumpLockout && soilMoisturePct <= (THRESH_SOIL_WET - 5.0)) {
       pumpLockout = false; // Hysteresis 5% agar tidak berosilasi
     }
-    ventilationActive = false;
-    gasAlarmActive = false;
     setEnvironmentalCommand(
       "NORMAL",
       "CMD_IDLE",
@@ -691,7 +639,7 @@ void onEspNowDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingDa
 }
 
 // ======================================================
-// 10. FIRE MODE STAGED (NON-BLOCKING SERVO REACH + VL53L0X GUARD)
+// 10. FIRE MODE STAGED (NON-BLOCKING 4-DOF SERVO REACH)
 // ======================================================
 void handleFireModeStaged() {
   if (pumpActive && currentState != STATE_SUPPRESSION_ACTIVE) {
@@ -737,10 +685,7 @@ void handleFireModeStaged() {
 
     case STAGE_SERVO3_REACH: {
       const int targetElbow = 75;
-      if (distanceSensorValid && targetDistanceMm < VL53L0X_MIN_SAFE_MM) {
-        // Jarak terlalu dekat, hentikan jangkauan segera demi keselamatan nozzle/kamera
-        currentFireStage = STAGE_SERVO4_NOZZLE;
-      } else if (angleElbow < targetElbow) {
+      if (angleElbow < targetElbow) {
         angleElbow += 2;
         if (angleElbow > targetElbow) angleElbow = targetElbow;
         servoElbow.write(constrain(angleElbow, 0, 180));
@@ -757,34 +702,22 @@ void handleFireModeStaged() {
         if (abs(targetNozzle - angleNozzle) <= 2) angleNozzle = targetNozzle;
         servoNozzle.write(constrain(angleNozzle, 0, 180));
       } else {
-        currentFireStage = STAGE_VERIFY_DISTANCE;
+        currentFireStage = STAGE_VERIFY_FIRE;
       }
       break;
     }
 
-    case STAGE_VERIFY_DISTANCE: {
-      bool distanceSafe = (distanceSensorValid &&
-                           targetDistanceMm >= VL53L0X_MIN_SAFE_MM &&
-                           targetDistanceMm <= VL53L0X_MAX_SUPPR_MM);
+    case STAGE_VERIFY_FIRE: {
       bool visualConfirmed = (cameraOnline && strcmp(aiVisionClass, "FIRE") == 0 && aiConfidence >= 0.70);
-      bool sensorCritical  = (activeFlameCount >= 2 && rawMQ135 > THRESH_MQ135_TOXIC);
+      bool flameConfirmed  = (activeFlameCount > 0);
 
-      if ((visualConfirmed || sensorCritical) && distanceSafe) {
+      if (visualConfirmed || flameConfirmed) {
         currentFireStage = STAGE_READY_SUPPRESS;
         currentState = STATE_SUPPRESSION_ACTIVE;
         setPump(true, true); // Bypass agricultural lockout saat api terverifikasi
-      } else if (!distanceSafe) {
-        // Jarak tidak valid atau di luar rentang semprot efektif -> Siaga / alarm
-        currentState = STATE_ALARM_FAULT;
-        setEnvironmentalCommand(
-          "KEBAKARAN",
-          "CMD_RETRACT_ARM",
-          "PERINGATAN: JARAK NOZZLE DI LUAR BATAS AMAN",
-          "{\"cmd\":\"CMD_RETRACT_ARM\"}"
-        );
       } else {
-        // Belum terverifikasi api visual atau kombinasi sensor kritis -> ulangi capture
         requestCameraCapture();
+        currentState = STATE_SCANNING_ZONES;
       }
       break;
     }
@@ -887,14 +820,6 @@ void setup() {
   servoShoulder.write(angleShoulder);
   servoElbow.write(angleElbow);
   servoNozzle.write(angleNozzle);
-
-  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
-  vl53l0xReady = vl53l0x.begin();
-  if (vl53l0xReady) {
-    Serial.println("[I2C OK] Sensor VL53L0X ToF siap.");
-  } else {
-    Serial.println("[I2C WARN] VL53L0X tidak terdeteksi saat boot (retry otomatis aktif).");
-  }
 
   dht.begin();
 
@@ -1163,11 +1088,8 @@ void loop() {
         "\"humidity\":%.2f,"
         "\"soil_moisture\":%.2f,"
         "\"soil_raw\":%d,"
-        "\"gas_raw\":%d,"
-        "\"mq135_raw\":%d,"
         "\"flame_detected\":%d,"
         "\"flame_ch\":[%d,%d,%d,%d,%d],"
-        "\"distance_mm\":%u,"
         "\"zone\":%d,"
         "\"motor_state\":\"%s\","
         "\"motor_driver\":\"L298N_ARM_GPIO\","
@@ -1175,8 +1097,6 @@ void loop() {
         "\"limit_right\":%s,"
         "\"pump_status\":%s,"
         "\"pump_lockout\":%s,"
-        "\"ventilation_active\":%s,"
-        "\"gas_alarm_active\":%s,"
         "\"servo_angles\":[%d,%d,%d,%d],"
         "\"system_state\":\"%s\","
         "\"uptime_seconds\":%lu,"
@@ -1187,16 +1107,14 @@ void loop() {
         "\"command_label\":\"%s\","
         "\"command_payload\":%s"
         "}",
-        currentTemp, currentHumidity, soilMoisturePct, rawSoil, rawMQ135, rawMQ135,
+        currentTemp, currentHumidity, soilMoisturePct, rawSoil,
         (activeFlameCount > 0 ? 1 : 0),
         flameCh[0], flameCh[1], flameCh[2], flameCh[3], flameCh[4],
-        targetDistanceMm, currentZone, motorStateStr,
+        currentZone, motorStateStr,
         (digitalRead(LIMIT_SW_LEFT) == LOW) ? "true" : "false",
         (digitalRead(LIMIT_SW_RIGHT) == LOW) ? "true" : "false",
         pumpActive ? "true" : "false",
         pumpLockout ? "true" : "false",
-        ventilationActive ? "true" : "false",
-        gasAlarmActive ? "true" : "false",
         angleBase, angleShoulder, angleElbow, angleNozzle,
         getSystemStateLabel(currentState),
         (unsigned long)(now / 1000UL),

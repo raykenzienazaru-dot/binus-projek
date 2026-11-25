@@ -326,7 +326,9 @@ export async function handleRequest(
 
   // BMKG Routes
   const isForecastRoute = pathname === '/api/bmkg/forecast';
-  const isNowcastRoute = pathname === '/api/bmkg/nowcast/id';
+  const nowcastFeedMatch = /^\/api\/bmkg\/nowcast\/(id|en)$/.exec(pathname);
+  const nowcastCapMatch = /^\/api\/bmkg\/nowcast\/(id|en)\/([A-Za-z0-9_-]{4,32}_alert\.xml)$/.exec(pathname);
+  const isNowcastRoute = Boolean(nowcastFeedMatch || nowcastCapMatch);
 
   if (!isForecastRoute && !isNowcastRoute) {
     sendError(res, 404, 'Not Found', 'NOT_FOUND');
@@ -404,7 +406,9 @@ export async function handleRequest(
   }
 
   if (isNowcastRoute) {
-    const cacheKey = 'nowcast:id';
+    const lang = (nowcastFeedMatch?.[1] || nowcastCapMatch?.[1] || 'id') as 'id' | 'en';
+    const capFile = nowcastCapMatch?.[2];
+    const cacheKey = capFile ? `nowcast:${lang}:${capFile}` : `nowcast:${lang}`;
     const cached = nowcastCache.get(cacheKey);
     if (cached) {
       res.writeHead(200, {
@@ -419,7 +423,7 @@ export async function handleRequest(
 
     try {
       const payload = await coalescer.execute(cacheKey, () =>
-        fetchUpstreamNowcast(config.maxNowcastBytes, config.upstreamTimeoutMs, fetchFn)
+        fetchUpstreamNowcast(config.maxNowcastBytes, config.upstreamTimeoutMs, fetchFn, lang, capFile)
       );
 
       nowcastCache.set(cacheKey, payload);

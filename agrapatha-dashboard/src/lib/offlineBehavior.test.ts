@@ -13,16 +13,14 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatSensorValue,
-  formatLightLuxValue,
-  formatGasValue,
   formatFlameValue,
   getSensorStatusLabel,
   getDeviceConnectivityStatus,
   isModelEvaluationPermitted,
 } from './sensorDisplay.ts';
 import {
-  evaluateModelHazard,
   evaluateFloraSensorModel,
+  evaluateBmkgSensorCorrelation,
 } from './aiModels.ts';
 
 describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
@@ -34,8 +32,6 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.notEqual(formatSensorValue(null, isLiveValid, 1), '0.0', 'Must not fabricate 0.0 for Air Temp');
       assert.notEqual(formatSensorValue(null, isLiveValid, 1), '0.0', 'Must not fabricate 0.0 for RH');
       assert.notEqual(formatSensorValue(null, isLiveValid, 1), '0.0', 'Must not fabricate 0.0 for Soil Moisture');
-      assert.notEqual(formatLightLuxValue(null, isLiveValid), '0', 'Must not fabricate 0 for Light Lux');
-      assert.notEqual(formatGasValue(null, isLiveValid), '0', 'Must not fabricate 0 for MQ-135');
       assert.notEqual(formatFlameValue(null, isLiveValid), '0', 'Must not fabricate 0 for Flame sensor');
 
       // Truthful zero-dummy fallback
@@ -43,11 +39,9 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'RH displays Unavailable');
       assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'Soil displays Unavailable');
       assert.equal(formatSensorValue(null, isLiveValid, 1, 'Not Connected'), 'Not Connected', 'Accepts explicit fallback');
-      assert.equal(formatLightLuxValue(null, isLiveValid), 'Unavailable', 'Light Lux displays Unavailable');
-      assert.equal(formatGasValue(null, isLiveValid), 'Unavailable', 'MQ-135 Gas displays Unavailable');
       assert.equal(formatFlameValue(null, isLiveValid), 'Unavailable', 'Flame displays Unavailable');
-      assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'FFMC displays Unavailable');
-      assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'Wind displays Unavailable');
+      assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'BMKG Precip displays Unavailable');
+      assert.equal(formatSensorValue(null, isLiveValid, 1), 'Unavailable', 'BMKG Wind displays Unavailable');
     });
 
     test('immediately replaces stale telemetry with "Unavailable" instead of retaining stale measurements or fabricating zeros', () => {
@@ -55,8 +49,6 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       const staleTemp = 29.4;
       const staleRh = 78.5;
       const staleSoil = 42.1;
-      const staleLux = 15200;
-      const staleFfmc = 88.2;
 
       // Stale data must never be presented as current measurements
       assert.notEqual(formatSensorValue(staleTemp, isLiveValid, 1), '29.4');
@@ -68,10 +60,7 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(formatSensorValue(staleTemp, isLiveValid, 1), 'Unavailable');
       assert.equal(formatSensorValue(staleRh, isLiveValid, 1), 'Unavailable');
       assert.equal(formatSensorValue(staleSoil, isLiveValid, 1), 'Unavailable');
-      assert.equal(formatLightLuxValue(staleLux, isLiveValid), 'Unavailable');
-      assert.equal(formatGasValue(480, isLiveValid), 'Unavailable');
       assert.equal(formatFlameValue(1, isLiveValid), 'Unavailable');
-      assert.equal(formatSensorValue(staleFfmc, isLiveValid, 1), 'Unavailable');
     });
 
     test('renders genuine live values with appropriate decimal precision when live and fresh', () => {
@@ -81,12 +70,10 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(formatSensorValue(78.5, isLiveValid, 1), '78.5');
       assert.equal(formatSensorValue(42.12, isLiveValid, 1), '42.1');
       assert.equal(formatSensorValue(0.0, isLiveValid, 1), '0.0', 'Genuine live 0.0 is preserved');
-      assert.equal(formatLightLuxValue(450, isLiveValid), '450');
-      assert.equal(formatLightLuxValue(15200, isLiveValid), '15.2k');
-      assert.equal(formatGasValue(480, isLiveValid), '480');
+      assert.equal(formatSensorValue(14.2, isLiveValid, 1), '14.2');
+      assert.equal(formatSensorValue(2.5, isLiveValid, 1), '2.5');
       assert.equal(formatFlameValue(1, isLiveValid), '1');
       assert.equal(formatFlameValue(0, isLiveValid), '0');
-      assert.equal(formatSensorValue(88.2, isLiveValid, 1), '88.2');
     });
   });
 
@@ -98,20 +85,20 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(getSensorStatusLabel('temp', 0.0, false), 'NOT CONNECTED', 'Must not label 0.0°C as SEJUK when offline');
       assert.equal(getSensorStatusLabel('rh', 0.0, false), 'NOT CONNECTED', 'Must not label 0% RH as KERING KRITIS when offline');
       assert.equal(getSensorStatusLabel('soil', 0.0, false), 'NOT CONNECTED', 'Must not label 0% soil as TANAH KERING when offline');
-      assert.equal(getSensorStatusLabel('mq135', null, false), 'NOT CONNECTED');
+      assert.equal(getSensorStatusLabel('bmkg_wind', null, false), 'NOT CONNECTED');
       assert.equal(getSensorStatusLabel('flame', null, false), 'NOT CONNECTED');
 
       // 2. Stale telemetry (watchdog fired)
       assert.equal(getSensorStatusLabel('temp', 32.0, false, null, true), 'STALE', 'Must report STALE on watchdog timeout');
       assert.equal(getSensorStatusLabel('rh', 60.0, false, null, true), 'STALE');
-      assert.equal(getSensorStatusLabel('mq135', 500, false, null, true), 'STALE');
+      assert.equal(getSensorStatusLabel('bmkg_wind', 15.0, false, null, true), 'STALE');
       assert.equal(getSensorStatusLabel('flame', 1, false, null, true), 'STALE');
     });
 
     test('sensor cards derive correct environmental categories ONLY when live and fresh', () => {
       const isLiveValid = true;
 
-      assert.equal(getSensorStatusLabel('temp', 30.5, isLiveValid), 'SUHU TINGGI');
+      assert.equal(getSensorStatusLabel('temp', 32.5, isLiveValid), 'SUHU TINGGI');
       assert.equal(getSensorStatusLabel('temp', 22.0, isLiveValid), 'OPTIMAL');
       assert.equal(getSensorStatusLabel('temp', 12.0, isLiveValid), 'SEJUK');
 
@@ -123,24 +110,16 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(getSensorStatusLabel('soil', 45.0, isLiveValid), 'LEMBAP SUBUR');
       assert.equal(getSensorStatusLabel('soil', 82.0, isLiveValid), 'BASAH JENUH');
 
-      assert.equal(getSensorStatusLabel('rain', 8.5, isLiveValid, 'HUJAN LEBAT'), 'HUJAN LEBAT');
-      assert.equal(getSensorStatusLabel('rain', 1.0, isLiveValid, 'GERIMIS'), 'GERIMIS');
-      assert.equal(getSensorStatusLabel('rain', 0.0, isLiveValid, 'KERING'), 'TIDAK HUJAN');
+      assert.equal(getSensorStatusLabel('bmkg_rain', 8.5, isLiveValid, 'Hujan Lebat'), 'HUJAN LEBAT');
+      assert.equal(getSensorStatusLabel('bmkg_rain', 1.0, isLiveValid, 'Hujan Ringan'), 'BERPOTENSI HUJAN');
+      assert.equal(getSensorStatusLabel('bmkg_rain', 0.0, isLiveValid, 'Cerah Berawan'), 'CERAH / BERAWAN');
 
-      assert.equal(getSensorStatusLabel('light', 60000, isLiveValid), 'TERIK INTENS');
-      assert.equal(getSensorStatusLabel('light', 20000, isLiveValid), 'TERANG SIANG');
-      assert.equal(getSensorStatusLabel('light', 500, isLiveValid), 'TEDUH / MALAM');
-
-      assert.equal(getSensorStatusLabel('mq135', 300, isLiveValid), 'NORMAL');
-      assert.equal(getSensorStatusLabel('mq135', 600, isLiveValid), 'MODERAT');
-      assert.equal(getSensorStatusLabel('mq135', 1200, isLiveValid), 'GAS TINGGI');
+      assert.equal(getSensorStatusLabel('bmkg_wind', 26.0, isLiveValid), 'ANGIN KENCANG');
+      assert.equal(getSensorStatusLabel('bmkg_wind', 15.0, isLiveValid), 'ANGIN SEDANG');
+      assert.equal(getSensorStatusLabel('bmkg_wind', 6.0, isLiveValid), 'ANGIN TENANG');
 
       assert.equal(getSensorStatusLabel('flame', 0, isLiveValid), 'AMAN');
       assert.equal(getSensorStatusLabel('flame', 1, isLiveValid), 'FLAME DETECTED');
-
-      assert.equal(getSensorStatusLabel('ffmc', 91.2, isLiveValid), 'ZONA PENYALAAN');
-      assert.equal(getSensorStatusLabel('ffmc', 85.0, isLiveValid), 'PENGERINGAN');
-      assert.equal(getSensorStatusLabel('ffmc', 75.0, isLiveValid), 'KADAR AIR AMAN');
     });
 
     test('device connectivity badge explicitly reflects connection state without masking', () => {
@@ -210,11 +189,19 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
     test('guarded model evaluations yield null and never fabricate predictions when offline or stale', () => {
       const isLiveTelemetry = false;
       const isTelemetryStale = false;
-      const missingFeatures = { temp: null, rh: null, wind: null, rain: null, ffmc: null, dmc: null, soilMoisture: null };
+      const missingFeatures = { temp: null, rh: null, soilMoisture: null };
 
-      const evaluateHazardGuarded = () => {
+      const evaluateCorrelationGuarded = () => {
         if (!isLiveTelemetry || isTelemetryStale) return null;
-        return evaluateModelHazard(missingFeatures as any);
+        return evaluateBmkgSensorCorrelation({
+          localTemp: missingFeatures.temp,
+          localRh: missingFeatures.rh,
+          localSoil: missingFeatures.soilMoisture,
+          flameDetected: null,
+          visionPrediction: null,
+          bmkgForecast: null,
+          bmkgAlerts: [],
+        });
       };
 
       const evaluateFloraGuarded = () => {
@@ -222,8 +209,8 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
         return evaluateFloraSensorModel(missingFeatures.temp as any, missingFeatures.rh as any, missingFeatures.soilMoisture as any);
       };
 
-      assert.equal(evaluateHazardGuarded(), null, 'Model 1 must return null in offline state');
-      assert.equal(evaluateFloraGuarded(), null, 'Model 2 must return null in offline state');
+      assert.equal(evaluateCorrelationGuarded(), null, 'BMKG correlation must return null in offline state');
+      assert.equal(evaluateFloraGuarded(), null, 'Botanical ANN must return null in offline state');
     });
   });
 
@@ -244,13 +231,13 @@ describe('Zero-Dummy-Data Offline & Safety Guards Test Suite', () => {
       assert.equal(getDisplayRh(), 'Unavailable');
       assert.equal(getStatus(), 'NOT CONNECTED');
 
-      // State 2: Fresh Telemetry Arrives (28.5°C, 45.0% RH)
+      // State 2: Fresh Telemetry Arrives (32.5°C, 45.0% RH)
       isLive = true;
       isStale = false;
-      temp = 28.5;
+      temp = 32.5;
       rh = 45.0;
 
-      assert.equal(getDisplayTemp(), '28.5');
+      assert.equal(getDisplayTemp(), '32.5');
       assert.equal(getDisplayRh(), '45.0');
       assert.equal(getStatus(), 'SUHU TINGGI');
 

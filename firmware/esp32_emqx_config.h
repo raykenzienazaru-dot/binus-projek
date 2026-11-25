@@ -39,14 +39,9 @@
 #define PIN_DHT                 19 // DHT22 (Air Temp & RH) - Confirmed
 #define PIN_SOIL                34 // Capacitive Soil Moisture v1.2 (ADC1_CH6) - Confirmed
 
-// NOTE: MQ-135 Gas & Flame Sensor GPIO assignments require physical rig verification.
-// - MQ-135 AO must connect to an ADC1 pin (GPIO 32-39) through a voltage divider (max 3.3V).
+// NOTE: Flame Sensor GPIO assignments (sensor MQ-135 & VL53L0X telah dinonaktifkan).
 // - Flame Sensor DO (Digital) and AO (Analog) are separate pins on the module and must not be conflated onto one pin.
 // Default unverified candidates below:
-#ifndef PIN_MQ135_AO
-  #define PIN_MQ135_AO          35 // ADC1_CH7 (Candidate - requires verification & voltage divider <= 3.3V)
-#endif
-#define PIN_MQ135               PIN_MQ135_AO // Alias for backwards compatibility
 
 // Flame Sensor Mode: Select whether DO (digital) or AO (analog) is physically wired.
 // 0 = Digital DO wired, 1 = Analog AO wired

@@ -1,6 +1,7 @@
 /**
  * Flora AI Dashboard — BMKG Service & Cache Manager
- * Enforces Flora project cache freshness policies, state transitions, and request lifecycles.
+ * Enforces Flora project cache freshness policies, state transitions, bilingual nowcast (id/en),
+ * CAP v1.2 detail XML enrichment, and request lifecycles.
  */
 
 import type {
@@ -11,8 +12,8 @@ import type {
   BmkgServiceState,
 } from '../types/bmkg.ts';
 import { parseBmkgForecast } from './bmkgForecastParser.ts';
-import { fetchRawForecast, fetchRawWarnings } from './bmkgTransport.ts';
-import { parseBmkgWarnings } from './bmkgWarningParser.ts';
+import { fetchRawCapDetail, fetchRawForecast, fetchRawWarnings } from './bmkgTransport.ts';
+import { mergeCapDetailAlert, parseBmkgWarnings } from './bmkgWarningParser.ts';
 
 // Flora Project Cache Policy Boundaries (in milliseconds)
 export const FRESH_THRESHOLD_MS = 15 * 60 * 1000;      // 0 - 15 minutes
@@ -32,7 +33,8 @@ interface CachedWarningFeedEntry {
 
 // In-Memory cache records
 const forecastMemoryCache = new Map<string, CachedForecastEntry>();
-let warningFeedMemoryCache: CachedWarningFeedEntry | null = null;
+const warningFeedMemoryCache = new Map<'id' | 'en', CachedWarningFeedEntry>();
+const capDetailCache = new Map<string, string>();
 
 // Track latest request to prevent delayed asynchronous responses from overwriting the active region
 let latestRequestedAdm4 = '';
@@ -64,11 +66,7 @@ export function formatDataAge(fetchedAt: number, now: number = Date.now()): stri
   return `${diffHours} jam yang lalu`;
 }
 
-/**
- * Loads forecast from in-memory cache or sessionStorage if valid.
- */
 function getCachedForecast(adm4: string, now: number = Date.now()): CachedForecastEntry | null {
-  // Check in-memory
   const entry = forecastMemoryCache.get(adm4);
   if (entry) {
     const freshness = evaluateCacheFreshness(entry.fetchedAt, now);
@@ -79,7 +77,6 @@ function getCachedForecast(adm4: string, now: number = Date.now()): CachedForeca
     return entry;
   }
 
-  // Check sessionStorage fallback
   if (typeof sessionStorage !== 'undefined') {
     try {
       const raw = sessionStorage.getItem(`flora_bmkg_fc_${adm4}`);
@@ -101,9 +98,6 @@ function getCachedForecast(adm4: string, now: number = Date.now()): CachedForeca
   return null;
 }
 
-/**
- * Persists forecast into in-memory cache and sessionStorage.
- */
 function setCachedForecast(adm4: string, forecast: BmkgNormalizedForecast, fetchedAt: number): void {
   const entry: CachedForecastEntry = { adm4, forecast, fetchedAt };
   forecastMemoryCache.set(adm4, entry);
@@ -119,6 +113,7 @@ function setCachedForecast(adm4: string, forecast: BmkgNormalizedForecast, fetch
 
 export interface ServiceExecutionOptions {
   forceRefresh?: boolean;
+  lang?: 'id' | 'en';
   mockFixtureForecast?: unknown;
   mockFixtureWarningXml?: string;
   now?: number;
@@ -133,22 +128,19 @@ export async function getBmkgRegionalData(
 ): Promise<BmkgServiceState> {
   const now = options.now ?? Date.now();
   const adm4 = region.adm4.trim();
+  const lang: 'id' | 'en' = options.lang === 'en' ? 'en' : 'id';
 
-  // Track request sequence to prevent delayed asynchronous responses from an old region overwriting active state
   const currentRequestId = ++latestRequestId;
   latestRequestedAdm4 = adm4;
 
-  // Cancel prior in-flight forecast request
   if (activeForecastAbortController) {
     activeForecastAbortController.abort();
   }
   activeForecastAbortController = new AbortController();
   const forecastSignal = activeForecastAbortController.signal;
 
-  // Helper to ensure current response is still relevant
   const isSuperseded = () => latestRequestId !== currentRequestId || latestRequestedAdm4 !== adm4;
 
-  // Check existing cache
   const cached = getCachedForecast(adm4, now);
   let cachedForecast: BmkgNormalizedForecast | null = null;
   let freshness: BmkgCacheFreshness = 'DISCARDED';
@@ -156,10 +148,11 @@ export async function getBmkgRegionalData(
   if (cached) {
     freshness = evaluateCacheFreshness(cached.fetchedAt, now);
     if (freshness === 'FRESH' && !options.forceRefresh && options.mockFixtureForecast === undefined) {
-      // Serve immediately from FRESH cache, evaluating warnings specifically for this region
       const alerts = await getBmkgWarnings(region, {
         signal: forecastSignal,
         mockXml: options.mockFixtureWarningXml,
+        lang,
+        forceRefresh: options.forceRefresh,
         now,
       });
 
@@ -169,6 +162,7 @@ export async function getBmkgRegionalData(
           forecast: null,
           alerts: [],
           selectedRegion: region,
+          lang,
           retrievalTimestamp: null,
           sourceAnalysisDate: null,
           errorMessage: null,
@@ -181,17 +175,16 @@ export async function getBmkgRegionalData(
         forecast: cached.forecast,
         alerts,
         selectedRegion: region,
+        lang,
         retrievalTimestamp: cached.fetchedAt,
         sourceAnalysisDate: cached.forecast.analysisDate,
         errorMessage: null,
         staleReason: null,
       };
     }
-    // STALE_USABLE or EXPIRED_UNUSABLE can be retained as fallback
     cachedForecast = cached.forecast;
   }
 
-  // Network fetch needed
   try {
     const rawForecast = await fetchRawForecast(adm4, {
       signal: forecastSignal,
@@ -204,6 +197,7 @@ export async function getBmkgRegionalData(
         forecast: null,
         alerts: [],
         selectedRegion: region,
+        lang,
         retrievalTimestamp: null,
         sourceAnalysisDate: null,
         errorMessage: null,
@@ -223,6 +217,8 @@ export async function getBmkgRegionalData(
     const alerts = await getBmkgWarnings(region, {
       signal: forecastSignal,
       mockXml: options.mockFixtureWarningXml,
+      lang,
+      forceRefresh: options.forceRefresh,
       now,
     });
 
@@ -232,6 +228,7 @@ export async function getBmkgRegionalData(
         forecast: null,
         alerts: [],
         selectedRegion: region,
+        lang,
         retrievalTimestamp: null,
         sourceAnalysisDate: null,
         errorMessage: null,
@@ -244,6 +241,7 @@ export async function getBmkgRegionalData(
       forecast: liveForecast,
       alerts,
       selectedRegion: region,
+      lang,
       retrievalTimestamp: now,
       sourceAnalysisDate: liveForecast.analysisDate,
       errorMessage: null,
@@ -252,13 +250,13 @@ export async function getBmkgRegionalData(
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown network failure';
 
-    // If abort occurred due to user switching region or cancelled request, handle cleanly
     if (err instanceof Error && err.name === 'AbortError') {
       return {
         status: 'LOADING',
         forecast: null,
         alerts: [],
         selectedRegion: region,
+        lang,
         retrievalTimestamp: null,
         sourceAnalysisDate: null,
         errorMessage: null,
@@ -272,6 +270,7 @@ export async function getBmkgRegionalData(
         forecast: null,
         alerts: [],
         selectedRegion: region,
+        lang,
         retrievalTimestamp: null,
         sourceAnalysisDate: null,
         errorMessage: null,
@@ -279,13 +278,13 @@ export async function getBmkgRegionalData(
       };
     }
 
-    // Attempt fallback to cached data if available
     if (cached && cachedForecast) {
       const currentFreshness = evaluateCacheFreshness(cached.fetchedAt, now);
       if (currentFreshness === 'STALE_USABLE') {
         const alerts = await getBmkgWarnings(region, {
           signal: forecastSignal,
           mockXml: options.mockFixtureWarningXml,
+          lang,
           now,
         });
         return {
@@ -293,6 +292,7 @@ export async function getBmkgRegionalData(
           forecast: cachedForecast,
           alerts,
           selectedRegion: region,
+          lang,
           retrievalTimestamp: cached.fetchedAt,
           sourceAnalysisDate: cachedForecast.analysisDate,
           errorMessage: errorMsg,
@@ -300,12 +300,12 @@ export async function getBmkgRegionalData(
         };
       }
       if (currentFreshness === 'EXPIRED_UNUSABLE') {
-        // Expired data must NOT be displayed as current operational forecast
         return {
           status: 'EXPIRED',
-          forecast: null, // Suppress from current view
+          forecast: null,
           alerts: [],
           selectedRegion: region,
+          lang,
           retrievalTimestamp: cached.fetchedAt,
           sourceAnalysisDate: cachedForecast.analysisDate,
           errorMessage: `Prakiraan cuaca telah kedaluwarsa (${formatDataAge(cached.fetchedAt, now)}). Harap perbarui koneksi BMKG.`,
@@ -314,12 +314,12 @@ export async function getBmkgRegionalData(
       }
     }
 
-    // No usable cache available -> Return ERROR
     return {
       status: 'ERROR',
       forecast: null,
       alerts: [],
       selectedRegion: region,
+      lang,
       retrievalTimestamp: null,
       sourceAnalysisDate: null,
       errorMessage: errorMsg,
@@ -329,59 +329,122 @@ export async function getBmkgRegionalData(
 }
 
 /**
+ * Fetches and caches a specific CAP detail XML (`{kode_detail_cap}_alert.xml`),
+ * merging polygons, expiry, severity, and infographic URL into the alert record.
+ */
+export async function getBmkgCapDetail(
+  alert: BmkgNormalizedAlert,
+  region: BmkgRegionRecord,
+  options: { signal?: AbortSignal; lang?: 'id' | 'en'; mockXml?: string } = {}
+): Promise<BmkgNormalizedAlert> {
+  if (!alert.capCode) return alert;
+
+  const lang: 'id' | 'en' = options.lang === 'en' ? 'en' : 'id';
+  const cacheKey = `${lang}:${alert.capCode}`;
+
+  if (options.mockXml !== undefined) {
+    capDetailCache.set(cacheKey, options.mockXml);
+    return mergeCapDetailAlert(alert, options.mockXml, region);
+  }
+
+  const cachedXml = capDetailCache.get(cacheKey);
+  if (cachedXml) {
+    return mergeCapDetailAlert(alert, cachedXml, region);
+  }
+
+  try {
+    const capXml = await fetchRawCapDetail(alert.capCode, {
+      signal: options.signal,
+      lang,
+    });
+    capDetailCache.set(cacheKey, capXml);
+    return mergeCapDetailAlert(alert, capXml, region);
+  } catch {
+    return alert;
+  }
+}
+
+async function enrichAlertsWithCachedOrLiveCap(
+  alerts: BmkgNormalizedAlert[],
+  region: BmkgRegionRecord,
+  lang: 'id' | 'en',
+  signal?: AbortSignal
+): Promise<BmkgNormalizedAlert[]> {
+  // Prioritize alerts mentioning Jakarta/Jabodetabek/Sawah Besar, plus top active alert so CAP detail works cleanly
+  const targets = alerts.filter((a) => a.capCode && !a.capDetailLoaded);
+  const jakartaTargets = targets.filter((a) => a.isJakartaRelevant);
+  const prioritized = (jakartaTargets.length > 0 ? jakartaTargets : targets).slice(0, 2);
+
+  if (prioritized.length === 0) return alerts;
+
+  const enrichedMap = new Map<string, BmkgNormalizedAlert>();
+  await Promise.allSettled(
+    prioritized.map(async (alert) => {
+      const updated = await getBmkgCapDetail(alert, region, { signal, lang });
+      enrichedMap.set(alert.id, updated);
+    })
+  );
+
+  return alerts.map((a) => enrichedMap.get(a.id) ?? a);
+}
+
+/**
  * Fetch and parse active warnings for the given region.
  * Stores raw XML in memory cache and evaluates applicability specifically per region.
  */
 export async function getBmkgWarnings(
   region: BmkgRegionRecord,
-  options: { signal?: AbortSignal; mockXml?: string; now?: number } = {}
+  options: { signal?: AbortSignal; mockXml?: string; lang?: 'id' | 'en'; forceRefresh?: boolean; now?: number } = {}
 ): Promise<BmkgNormalizedAlert[]> {
   const now = options.now ?? Date.now();
+  const lang: 'id' | 'en' = options.lang === 'en' ? 'en' : 'id';
 
-  // If local mock XML is provided, cache raw XML and evaluate for current region
   if (options.mockXml !== undefined) {
-    warningFeedMemoryCache = {
+    warningFeedMemoryCache.set(lang, {
       xmlText: options.mockXml,
       fetchedAt: now,
-    };
+    });
     const parseResult = parseBmkgWarnings(options.mockXml, region);
     return parseResult.success ? parseResult.alerts : [];
   }
 
-  // If raw XML cache exists and is fresh (< 15 min), evaluate specifically for the requested region
-  if (warningFeedMemoryCache) {
-    const age = now - warningFeedMemoryCache.fetchedAt;
+  const cachedFeed = warningFeedMemoryCache.get(lang);
+  if (cachedFeed && !options.forceRefresh) {
+    const age = now - cachedFeed.fetchedAt;
     if (age <= FRESH_THRESHOLD_MS) {
-      const parseResult = parseBmkgWarnings(warningFeedMemoryCache.xmlText, region);
-      return parseResult.success ? parseResult.alerts : [];
+      const parseResult = parseBmkgWarnings(cachedFeed.xmlText, region);
+      if (!parseResult.success) return [];
+      return enrichAlertsWithCachedOrLiveCap(parseResult.alerts, region, lang, options.signal);
     }
   }
 
-  // Cancel prior warning request
   if (activeWarningAbortController) {
     activeWarningAbortController.abort();
   }
   activeWarningAbortController = new AbortController();
 
   try {
+    const effectiveSignal = options.signal || activeWarningAbortController.signal;
     const xmlText = await fetchRawWarnings({
-      signal: options.signal || activeWarningAbortController.signal,
+      signal: effectiveSignal,
+      lang,
       mockFixtureXml: options.mockXml,
     });
 
-    warningFeedMemoryCache = {
+    warningFeedMemoryCache.set(lang, {
       xmlText,
       fetchedAt: now,
-    };
+    });
 
     const result = parseBmkgWarnings(xmlText, region);
-    return result.success ? result.alerts : [];
+    if (!result.success) return [];
+    return enrichAlertsWithCachedOrLiveCap(result.alerts, region, lang, effectiveSignal);
   } catch {
-    // If warnings fetch fails, fallback to stale cached raw XML evaluated specifically for current region
-    if (warningFeedMemoryCache) {
-      const freshness = evaluateCacheFreshness(warningFeedMemoryCache.fetchedAt, now);
+    const fallbackFeed = warningFeedMemoryCache.get(lang);
+    if (fallbackFeed) {
+      const freshness = evaluateCacheFreshness(fallbackFeed.fetchedAt, now);
       if (freshness === 'FRESH' || freshness === 'STALE_USABLE') {
-        const result = parseBmkgWarnings(warningFeedMemoryCache.xmlText, region);
+        const result = parseBmkgWarnings(fallbackFeed.xmlText, region);
         return result.success ? result.alerts : [];
       }
     }
@@ -394,7 +457,8 @@ export async function getBmkgWarnings(
  */
 export function clearBmkgCache(): void {
   forecastMemoryCache.clear();
-  warningFeedMemoryCache = null;
+  warningFeedMemoryCache.clear();
+  capDetailCache.clear();
   latestRequestedAdm4 = '';
   latestRequestId = 0;
   if (typeof sessionStorage !== 'undefined') {

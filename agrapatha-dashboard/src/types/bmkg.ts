@@ -107,6 +107,14 @@ export interface BmkgNormalizedAlert {
   geographicScope: string;
   polygonCoordinates?: [number, number][];
   allPolygons?: [number, number][][];
+  capCode?: string;
+  severity?: string;
+  urgency?: string;
+  certainty?: string;
+  areaDesc?: string;
+  infographicUrl?: string;
+  isJakartaRelevant?: boolean;
+  capDetailLoaded?: boolean;
 }
 
 export interface BmkgRegionRecord {
@@ -144,6 +152,7 @@ export interface BmkgServiceState {
   forecast: BmkgNormalizedForecast | null;
   alerts: BmkgNormalizedAlert[];
   selectedRegion: BmkgRegionRecord;
+  lang?: 'id' | 'en';
   retrievalTimestamp: number | null;
   sourceAnalysisDate: string | null;
   errorMessage: string | null;

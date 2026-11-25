@@ -16,11 +16,10 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseGatewayTelemetry, type GatewayTelemetryPayload } from './gatewayService.ts';
 import {
-  evaluateModelHazard,
   evaluateFloraSensorModel,
-  computeFwiComponents,
-  type HazardInferenceResult,
+  evaluateBmkgSensorCorrelation,
   type FloraSensorModelResult,
+  type BmkgSensorCorrelation,
 } from './aiModels.ts';
 
 describe('B.4.11 — Live Telemetry Path & Model Integration Verification', () => {
@@ -115,53 +114,51 @@ describe('B.4.11 — Live Telemetry Path & Model Integration Verification', () =
     });
   });
 
-  describe('Boundary 3 -> 4: Live Model 1 & Model 2 Inference with Genuine Telemetry', () => {
-    test('FWI Engine and Model 1 (model_hazard.h) execute successfully on live sensor inputs', () => {
+  describe('Boundary 3 -> 4: Live BMKG Correlation & Botanical ANN Inference with Genuine Telemetry', () => {
+    test('BMKG Sawah Besar <-> Sensor Correlation executes on live DHT22/Soil/Flame & BMKG forecast inputs', () => {
       const temp = 29.4;
       const rh = 42.5;
-      const wind = 2.2;
-      const rain = 0.0;
       const soilMoisture = 31.2;
 
-      // 1. Dynamic FWI derivation
-      const fwi = computeFwiComponents({
-        temp,
-        rh,
-        wind,
-        rain,
-        soilMoisture,
+      const corr: BmkgSensorCorrelation = evaluateBmkgSensorCorrelation({
+        localTemp: temp,
+        localRh: rh,
+        localSoil: soilMoisture,
+        flameDetected: 0,
+        visionPrediction: 'Healthy Forest Canopy',
+        bmkgForecast: {
+          adm4: '31.71.02.1001',
+          locationName: 'Pasar Baru',
+          hierarchy: {
+            village: 'Pasar Baru',
+            district: 'Sawah Besar',
+            regency: 'Kota Adm. Jakarta Pusat',
+            province: 'DKI Jakarta',
+          },
+          coordinates: { lat: -6.1660294705, lon: 106.8344840159 },
+          timezone: 'Asia/Jakarta',
+          analysisDate: null,
+          clientFetchedAt: Date.now(),
+          currentStep: {
+            utcDatetime: '2026-11-25 06:00:00',
+            localDatetime: '2026-11-25 13:00:00',
+            isoDatetime: '2026-11-25T06:00:00.000Z',
+            temperatureC: 30,
+            humidityPercent: 70,
+            windSpeedKmh: 12,
+            weatherDesc: 'Hujan Ringan',
+            weatherDescEn: 'Light Rain',
+            precipitationMm: 2.0,
+          },
+          allSteps: [],
+        },
+        bmkgAlerts: [],
       });
 
-      assert.ok(typeof fwi.ffmc === 'number' && Number.isFinite(fwi.ffmc));
-      assert.ok(typeof fwi.dmc === 'number' && Number.isFinite(fwi.dmc));
-      assert.ok(typeof fwi.dc === 'number' && Number.isFinite(fwi.dc));
-      assert.ok(typeof fwi.isi === 'number' && Number.isFinite(fwi.isi));
-
-      // 2. Exact 100-tree C Random Forest evaluation
-      const hazard: HazardInferenceResult | null = evaluateModelHazard({
-        temp,
-        rh,
-        wind,
-        rain,
-        ffmc: fwi.ffmc,
-        dmc: fwi.dmc,
-        dc: fwi.dc,
-        isi: fwi.isi,
-      });
-
-      assert.ok(hazard !== null, 'Model 1 must evaluate on live inputs');
-      assert.ok(
-        hazard.riskLevel === 'LOW' ||
-        hazard.riskLevel === 'MODERATE' ||
-        hazard.riskLevel === 'HIGH'
-      );
-      assert.ok(hazard.confidence >= 0 && hazard.confidence <= 100);
-      assert.ok(hazard.highProbability >= 0 && hazard.highProbability <= 100);
-      assert.ok(hazard.moderateProbability >= 0 && hazard.moderateProbability <= 100);
-      assert.ok(hazard.lowProbability >= 0 && hazard.lowProbability <= 100);
-      assert.ok(
-        hazard.kaggleBinaryPrediction === 'On Fire' || hazard.kaggleBinaryPrediction === 'safe'
-      );
+      assert.equal(corr.severity, 'ADVISORY');
+      assert.equal(corr.hasRainForecast, true);
+      assert.equal(corr.windSpeedKmh, 12);
+      assert.equal(corr.tempDeltaC, -0.6);
     });
 
     test('Model 2 (grenvis_sensor_model.h) executes successfully on live sensor inputs', () => {
@@ -191,14 +188,20 @@ describe('B.4.11 — Live Telemetry Path & Model Integration Verification', () =
       const temp = 29.4;
       const rh = 42.5;
       const soilMoisture = 31.2;
-      const ffmc = 85.0;
-      const dmc = 40.0;
 
-      // Model 1 guarded evaluation
-      const computeHazardResult = () => {
+      // BMKG correlation guarded evaluation
+      const computeCorrelationResult = () => {
         if (!isLiveTelemetry || isTelemetryStale) return null;
-        if (temp === null || rh === null || ffmc === null || dmc === null) return null;
-        return evaluateModelHazard({ temp, rh, wind: 2.2, rain: 0, ffmc, dmc });
+        if (temp === null || rh === null || soilMoisture === null) return null;
+        return evaluateBmkgSensorCorrelation({
+          localTemp: temp,
+          localRh: rh,
+          localSoil: soilMoisture,
+          flameDetected: 0,
+          visionPrediction: null,
+          bmkgForecast: null,
+          bmkgAlerts: [],
+        });
       };
 
       // Model 2 guarded evaluation
@@ -208,20 +211,20 @@ describe('B.4.11 — Live Telemetry Path & Model Integration Verification', () =
         return evaluateFloraSensorModel(temp, rh, soilMoisture);
       };
 
-      assert.equal(computeHazardResult(), null, 'Model 1 must invalidate to null when stale');
-      assert.equal(computeFloraResult(), null, 'Model 2 must invalidate to null when stale');
+      assert.equal(computeCorrelationResult(), null, 'BMKG correlation must invalidate to null when stale');
+      assert.equal(computeFloraResult(), null, 'Botanical ANN must invalidate to null when stale');
     });
 
     test('dashboard evaluation logic strictly yields null when gateway is DISCONNECTED', () => {
       const isLiveTelemetry = false; // Disconnected
       const isTelemetryStale = false;
 
-      const computeHazardResult = () => {
+      const computeFloraResult = () => {
         if (!isLiveTelemetry || isTelemetryStale) return null;
-        return evaluateModelHazard({ temp: 25, rh: 50, wind: 2, rain: 0, ffmc: 80, dmc: 30 });
+        return evaluateFloraSensorModel(25, 50, 42);
       };
 
-      assert.equal(computeHazardResult(), null, 'Model 1 must be null when disconnected');
+      assert.equal(computeFloraResult(), null, 'Botanical ANN must be null when disconnected');
     });
   });
 

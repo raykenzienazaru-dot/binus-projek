@@ -196,14 +196,19 @@ export async function fetchUpstreamForecast(
 }
 
 /**
- * Fetches BMKG raw XML nowcast warning feed.
+ * Fetches BMKG raw XML nowcast warning feed (id or en) or CAP detail XML ({kode}_alert.xml).
  */
 export async function fetchUpstreamNowcast(
   maxBytes: number,
   timeoutMs: number,
-  fetchFn: FetchFunction = globalThis.fetch
+  fetchFn: FetchFunction = globalThis.fetch,
+  lang: 'id' | 'en' = 'id',
+  capFile?: string
 ): Promise<UpstreamPayload> {
-  const targetUrl = `${FIXED_NOWCAST_ORIGIN}${FIXED_NOWCAST_PATH}`;
+  const safeLang = lang === 'en' ? 'en' : 'id';
+  const targetUrl = capFile
+    ? `${FIXED_NOWCAST_ORIGIN}/alerts/nowcast/${safeLang}/${encodeURIComponent(capFile)}`
+    : `${FIXED_NOWCAST_ORIGIN}/alerts/nowcast/${safeLang}`;
   return fetchFixedUpstream(
     targetUrl,
     FIXED_NOWCAST_ORIGIN,

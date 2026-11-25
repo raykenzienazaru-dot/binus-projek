@@ -22,12 +22,11 @@ export interface IotHardwareConfig {
   pins: {
     dht: number;
     soil: number;
-    rain: number;
-    ldr: number;
+    flameChannels: number[];
+    servos: number[];
+    pumpRelay: number;
     motorIn1: number;
     motorIn2: number;
-    motorIn3: number; // L298N IN3 (Drives OUT3)
-    motorIn4: number; // L298N IN4 (Drives OUT4)
     limitLeft: number;
     limitRight: number;
   };
@@ -63,16 +62,15 @@ export const DEFAULT_IOT_CONFIG: IotConfig = {
     esp32CamMac: 'F8:B3:B7:A6:F3:9C',
     espNowChannel: 6,
     pins: {
-      dht: 19,
+      dht: 4,
       soil: 34,
-      rain: 35,
-      ldr: 36,
+      flameChannels: [25, 26, 27, 32, 33],
+      servos: [13, 14, 15, 5],
+      pumpRelay: 23,
       motorIn1: 16,
       motorIn2: 17,
-      motorIn3: 16, // L298N IN3 (Drives OUT3)
-      motorIn4: 17, // L298N IN4 (Drives OUT4)
-      limitLeft: 32,
-      limitRight: 33,
+      limitLeft: 18,
+      limitRight: 19,
     },
   },
 };

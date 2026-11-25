@@ -2,8 +2,8 @@
  * AGRAPATHA — Live-Only Model Result Integrity & Provenance Test Suite (B.4.10)
  *
  * Verifies that:
- * 1. Model 1 (model_hazard.h) and Model 2 (grenvis_sensor_model.h) return `null`
- *    whenever required live inputs are absent, null, undefined, or non-finite.
+ * 1. Botanical ANN (grenvis_sensor_model.h) and BMKG Sawah Besar Sensor Correlation return `null` /
+ *    wait gracefully whenever required live inputs are absent, null, undefined, or non-finite.
  * 2. Genuine inference output is generated only when all verified input features
  *    are complete and valid numbers.
  * 3. Fallback, default, or preset constants are never substituted for missing inputs.
@@ -14,142 +14,99 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  evaluateModelHazard,
   evaluateFloraSensorModel,
-  type HazardInferenceResult,
+  evaluateBmkgSensorCorrelation,
   type FloraSensorModelResult,
+  type BmkgSensorCorrelation,
 } from './aiModels.ts';
 
 describe('B.4.10 — Live-Only Model Result Integrity', () => {
-  describe('1. Model 1 (model_hazard.h) Live-Input Guards', () => {
-    test('returns null when no parameters are provided', () => {
-      const result = evaluateModelHazard();
-      assert.equal(result, null, 'Must return null when parameters are undefined');
+  describe('1. BMKG Sawah Besar <-> Sensor Correlation Engine Live-Input & Safety Guards', () => {
+    test('returns NORMAL standby without false alarms when local sensors & BMKG forecast are absent', () => {
+      const result: BmkgSensorCorrelation = evaluateBmkgSensorCorrelation({
+        localTemp: null,
+        localRh: null,
+        localSoil: null,
+        flameDetected: null,
+        visionPrediction: null,
+        bmkgForecast: null,
+        bmkgAlerts: [],
+      });
+      assert.equal(result.severity, 'NORMAL');
+      assert.equal(result.tempDeltaC, null);
+      assert.equal(result.rhDeltaPct, null);
+      assert.equal(result.hasRainForecast, false);
+      assert.equal(result.hasJakartaAlert, false);
     });
 
-    test('returns null when any required feature is null', () => {
-      // Required: temp, rh, wind, rain, ffmc, dmc
-      const baseValid = {
-        temp: 24.5,
-        rh: 45.0,
-        wind: 3.5,
-        rain: 0.0,
-        ffmc: 88.2,
-        dmc: 92.4,
-      };
-
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, temp: null }),
-        null,
-        'Must return null if temp is null'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, rh: null }),
-        null,
-        'Must return null if rh is null'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, wind: null }),
-        null,
-        'Must return null if wind is null'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, rain: null }),
-        null,
-        'Must return null if rain is null'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, ffmc: null }),
-        null,
-        'Must return null if ffmc is null'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, dmc: null }),
-        null,
-        'Must return null if dmc is null'
-      );
+    test('prioritizes CRITICAL when active fire is detected via Flame 5-Ch or Vision even with BMKG data', () => {
+      const result = evaluateBmkgSensorCorrelation({
+        localTemp: 34.5,
+        localRh: 30.0,
+        localSoil: 22.0,
+        flameDetected: 1,
+        visionPrediction: 'Active Surface Fire',
+        bmkgForecast: {
+          adm4: '31.71.02.1001',
+          locationName: 'Pasar Baru',
+          hierarchy: {
+            village: 'Pasar Baru',
+            district: 'Sawah Besar',
+            regency: 'Kota Adm. Jakarta Pusat',
+            province: 'DKI Jakarta',
+          },
+          coordinates: { lat: -6.1660294705, lon: 106.8344840159 },
+          timezone: 'Asia/Jakarta',
+          analysisDate: null,
+          clientFetchedAt: Date.now(),
+          currentStep: {
+            utcDatetime: '2026-11-25 06:00:00',
+            localDatetime: '2026-11-25 13:00:00',
+            isoDatetime: '2026-11-25T06:00:00.000Z',
+            temperatureC: 30,
+            humidityPercent: 72,
+            windSpeedKmh: 18,
+            weatherDesc: 'Hujan Ringan',
+            weatherDescEn: 'Light Rain',
+            precipitationMm: 2.5,
+          },
+          allSteps: [],
+        },
+        bmkgAlerts: [],
+      });
+      assert.equal(result.severity, 'CRITICAL');
+      assert.equal(result.tempDeltaC, 4.5);
+      assert.equal(result.windSpeedKmh, 18);
+      assert.equal(result.hasRainForecast, true);
     });
 
-    test('returns null when any required feature is missing or non-finite', () => {
-      const baseValid = {
-        temp: 24.5,
-        rh: 45.0,
-        wind: 3.5,
-        rain: 0.0,
-        ffmc: 88.2,
-        dmc: 92.4,
-      };
-
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, temp: undefined }),
-        null,
-        'Must return null if temp is undefined'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, temp: Number.NaN }),
-        null,
-        'Must return null if temp is NaN'
-      );
-      assert.equal(
-        evaluateModelHazard({ ...baseValid, temp: Number.POSITIVE_INFINITY }),
-        null,
-        'Must return null if temp is Infinite'
-      );
-      assert.equal(
-        evaluateModelHazard({} as any),
-        null,
-        'Must return null if empty object passed'
-      );
-    });
-
-    test('returns genuine evaluation result when all required inputs are valid numbers', () => {
-      const liveInputs = {
-        temp: 32.5,
-        rh: 22.0,
-        wind: 15.0,
-        rain: 0.0,
-        ffmc: 94.2,
-        dmc: 125.0,
-        dc: 650.0,
-        isi: 18.5,
-      };
-
-      const result: HazardInferenceResult | null = evaluateModelHazard(liveInputs);
-      assert.ok(result !== null, 'Inference must succeed on valid inputs');
-      assert.ok(
-        result.riskLevel === 'HIGH' ||
-        result.riskLevel === 'MODERATE' ||
-        result.riskLevel === 'LOW',
-        `Risk level must be HIGH/MODERATE/LOW, got ${result?.riskLevel}`
-      );
-      assert.ok(typeof result.confidence === 'number' && Number.isFinite(result.confidence));
-      assert.ok(result.confidence >= 0 && result.confidence <= 100);
-      assert.ok(typeof result.highProbability === 'number' && Number.isFinite(result.highProbability));
-      assert.ok(typeof result.moderateProbability === 'number' && Number.isFinite(result.moderateProbability));
-      assert.ok(typeof result.lowProbability === 'number' && Number.isFinite(result.lowProbability));
-      assert.ok(
-        result.kaggleBinaryPrediction === 'On Fire' || result.kaggleBinaryPrediction === 'safe',
-        `Kaggle prediction must be 'On Fire' or 'safe', got ${result.kaggleBinaryPrediction}`
-      );
-      // High FFMC + High DMC + High Temp in this model must evaluate to 'On Fire'
-      assert.equal(result.kaggleBinaryPrediction, 'On Fire');
-    });
-
-    test('evaluates safe condition correctly when litter is moist', () => {
-      const liveInputs = {
-        temp: 14.0,
-        rh: 85.0,
-        wind: 1.2,
-        rain: 5.5,
-        ffmc: 42.0,
-        dmc: 15.0,
-      };
-
-      const result = evaluateModelHazard(liveInputs);
-      assert.ok(result !== null);
-      assert.equal(result.riskLevel, 'LOW');
-      assert.equal(result.kaggleBinaryPrediction, 'safe');
-      assert.ok(result.lowProbability > 50, 'Low probability should dominate under moist conditions');
+    test('returns WARNING when active Jakarta/Sawah Besar CAP Nowcast alert matches', () => {
+      const result = evaluateBmkgSensorCorrelation({
+        localTemp: 28.0,
+        localRh: 80.0,
+        localSoil: 78.0,
+        flameDetected: 0,
+        visionPrediction: 'Healthy Forest Canopy',
+        bmkgForecast: null,
+        bmkgAlerts: [
+          {
+            id: 'cap-sb-1',
+            headline: 'Peringatan Hujan Lebat DKI Jakarta',
+            event: 'Hujan Lebat & Petir',
+            description: 'Hujan sedang-lebat berpotensi terjadi di Sawah Besar.',
+            effectiveTime: '2026-11-25T06:00:00Z',
+            expiresTime: '2026-11-25T10:00:00Z',
+            validityStatus: 'VALID',
+            sender: 'BMKG',
+            sourceUrl: 'https://www.bmkg.go.id/alerts/nowcast/id/CSU20261125006_alert.xml',
+            applicability: 'GEOGRAPHIC_MATCH',
+            geographicScope: 'Sawah Besar, Jakarta Pusat',
+            isJakartaRelevant: true,
+          },
+        ],
+      });
+      assert.equal(result.severity, 'WARNING');
+      assert.equal(result.hasJakartaAlert, true);
     });
   });
 
@@ -207,46 +164,36 @@ describe('B.4.10 — Live-Only Model Result Integrity', () => {
   describe('3. Telemetry Invalidation & Standby State Logic', () => {
     test('stale or disconnected telemetry must invalidate model results', () => {
       // Simulate dashboard live evaluation guard condition
-      const computeLiveHazard = (
+      const computeLiveBotanical = (
         isLive: boolean,
         isStale: boolean,
         temp: number | null,
         rh: number | null,
-        wind: number | null,
-        rain: number | null,
-        ffmc: number | null,
-        dmc: number | null
+        soilMoisture: number | null
       ) => {
         if (!isLive || isStale) return null;
-        if (
-          temp === null ||
-          rh === null ||
-          wind === null ||
-          rain === null ||
-          ffmc === null ||
-          dmc === null
-        ) {
+        if (temp === null || rh === null || soilMoisture === null) {
           return null;
         }
-        return evaluateModelHazard({ temp, rh, wind, rain, ffmc, dmc });
+        return evaluateFloraSensorModel(temp, rh, soilMoisture);
       };
 
       // Disconnected: must be null even with cached sensor numbers
       assert.equal(
-        computeLiveHazard(false, false, 25, 50, 3, 0, 85, 40),
+        computeLiveBotanical(false, false, 25, 50, 42),
         null,
         'Disconnected state must produce null'
       );
 
       // Stale: must be null even if isLive is true
       assert.equal(
-        computeLiveHazard(true, true, 25, 50, 3, 0, 85, 40),
+        computeLiveBotanical(true, true, 25, 50, 42),
         null,
         'Stale telemetry must produce null'
       );
 
       // Fresh & Live: evaluates to genuine result
-      const liveRes = computeLiveHazard(true, false, 25, 50, 3, 0, 85, 40);
+      const liveRes = computeLiveBotanical(true, false, 25, 50, 42);
       assert.ok(liveRes !== null, 'Fresh live data must produce valid inference');
     });
   });
