@@ -286,16 +286,25 @@ void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDel
   }
 }
 
+bool sliderManualIgnoreLimit = false;
+
 void stopSlider() {
   digitalWrite(MOTOR_IN1, LOW);
   digitalWrite(MOTOR_IN2, LOW);
   strncpy(motorStateStr, "STOPPED", sizeof(motorStateStr));
   sliderManualActive = false;
+  sliderManualIgnoreLimit = false;
 }
 
-bool moveSliderLeft() {
-  if (emergencyStopTriggered || digitalRead(LIMIT_SW_LEFT) == LOW) {
+bool moveSliderLeft(bool ignoreLimit = false) {
+  if (emergencyStopTriggered) {
     stopSlider();
+    Serial.println("[SLIDER BLOCKED] E-STOP aktif. Kirim CMD_RESET_EMERGENCY dahulu.");
+    return false;
+  }
+  if (!ignoreLimit && digitalRead(LIMIT_SW_LEFT) == LOW) {
+    stopSlider();
+    Serial.println("[SLIDER BLOCKED] LIMIT_SW_LEFT (GPIO 18) aktif LOW.");
     return false;
   }
   digitalWrite(MOTOR_IN1, HIGH);
@@ -304,9 +313,15 @@ bool moveSliderLeft() {
   return true;
 }
 
-bool moveSliderRight() {
-  if (emergencyStopTriggered || digitalRead(LIMIT_SW_RIGHT) == LOW) {
+bool moveSliderRight(bool ignoreLimit = false) {
+  if (emergencyStopTriggered) {
     stopSlider();
+    Serial.println("[SLIDER BLOCKED] E-STOP aktif. Kirim CMD_RESET_EMERGENCY dahulu.");
+    return false;
+  }
+  if (!ignoreLimit && digitalRead(LIMIT_SW_RIGHT) == LOW) {
+    stopSlider();
+    Serial.println("[SLIDER BLOCKED] LIMIT_SW_RIGHT (GPIO 19) aktif LOW.");
     return false;
   }
   digitalWrite(MOTOR_IN1, LOW);
@@ -460,10 +475,13 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
   else if (strcmp(cmdName, "CMD_EVACUATE_OPPOSITE") == 0) {
     setPump(false);
     sliderTransitionActive = false;
-    moveSliderLeft();
-    sliderManualActive = true;
-    sliderManualEndTime = millis() + 2500;
-    Serial.println("[EKSEKUSI] Kereta rel dievakuasi ke kiri menjauhi titik panas.");
+    sliderManualIgnoreLimit = false;
+    if (moveSliderLeft()) {
+      sliderManualActive = true;
+      sliderManualEndTime = millis() + 2500;
+      Serial.println("[EKSEKUSI] Kereta rel dievakuasi ke kiri menjauhi titik panas.");
+    }
+    lastMqttPubTime = 0;
   }
 
   // 4. Perintah Verifikasi Asap Visual (ESP32-CAM MobileNetV2 SMOKE)
@@ -495,6 +513,7 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
       sliderMoveStartTime = millis();
       Serial.println("[EKSEKUSI] Lengan & Rel dialihkan ke MODE OTOMATIS (Scanning).");
     }
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_ARM_HOME") == 0) {
     stopSlider();
@@ -503,6 +522,7 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     moveServoSmooth(servoElbow, angleElbow, 45, 6);
     moveServoSmooth(servoNozzle, angleNozzle, 90, 6);
     Serial.println("[EKSEKUSI] 4-DoF Arm diset ke posisi Home Manual (90/45/45/90 deg).");
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_SET_SERVO") == 0) {
     if (params.containsKey("base"))     moveServoSmooth(servoBase, angleBase, params["base"], 5);
@@ -511,27 +531,64 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     if (params.containsKey("nozzle"))   moveServoSmooth(servoNozzle, angleNozzle, params["nozzle"], 5);
     Serial.printf("[EKSEKUSI] Sudut Servo Manual -> Base:%d Sh:%d El:%d Noz:%d\n",
                   angleBase, angleShoulder, angleElbow, angleNozzle);
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_STOP_PUMP") == 0) {
     setPump(false);
     if (armManualMode) currentState = STATE_MANUAL;
     Serial.println("[EKSEKUSI] Pompa dimatikan manual.");
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_SLIDER_LEFT") == 0 || strcmp(cmdName, "L") == 0) {
+    unsigned long dur = params["duration"] | 3000;
+    if (dur < 100) dur = 100;
+    if (dur > 15000) dur = 15000;
+    bool ignoreLim = params["ignore_limit"] | false;
     sliderTransitionActive = false;
-    moveSliderLeft();
-    sliderManualActive = true;
-    sliderManualEndTime = millis() + (params["duration"] | 1500);
+    if (currentState == STATE_ALARM_FAULT) {
+      currentState = armManualMode ? STATE_MANUAL : STATE_SCANNING_ZONES;
+    }
+    if (moveSliderLeft(ignoreLim)) {
+      sliderManualIgnoreLimit = ignoreLim;
+      sliderManualActive = true;
+      sliderManualEndTime = millis() + dur;
+      Serial.printf("[EKSEKUSI] L298N Slider KIRI (%lu ms, bypass_limit=%d, GPIO16=HIGH, GPIO17=LOW).\n",
+                    dur, ignoreLim ? 1 : 0);
+    } else {
+      sliderManualActive = false;
+      sliderManualIgnoreLimit = false;
+    }
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_SLIDER_RIGHT") == 0 || strcmp(cmdName, "R") == 0) {
+    unsigned long dur = params["duration"] | 3000;
+    if (dur < 100) dur = 100;
+    if (dur > 15000) dur = 15000;
+    bool ignoreLim = params["ignore_limit"] | false;
     sliderTransitionActive = false;
-    moveSliderRight();
-    sliderManualActive = true;
-    sliderManualEndTime = millis() + (params["duration"] | 1500);
+    if (currentState == STATE_ALARM_FAULT) {
+      currentState = armManualMode ? STATE_MANUAL : STATE_SCANNING_ZONES;
+    }
+    if (moveSliderRight(ignoreLim)) {
+      sliderManualIgnoreLimit = ignoreLim;
+      sliderManualActive = true;
+      sliderManualEndTime = millis() + dur;
+      Serial.printf("[EKSEKUSI] L298N Slider KANAN (%lu ms, bypass_limit=%d, GPIO16=LOW, GPIO17=HIGH).\n",
+                    dur, ignoreLim ? 1 : 0);
+    } else {
+      sliderManualActive = false;
+      sliderManualIgnoreLimit = false;
+    }
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_SLIDER_STOP") == 0 || strcmp(cmdName, "S") == 0) {
     sliderTransitionActive = false;
     stopSlider();
+    if (currentState == STATE_ALARM_FAULT && armManualMode) {
+      currentState = STATE_MANUAL;
+    }
+    Serial.println("[EKSEKUSI] L298N Slider BERHENTI (GPIO16=LOW, GPIO17=LOW).");
+    lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_TRIGGER_CAPTURE") == 0 || strcmp(cmdName, "C") == 0) {
     requestCameraCapture();
@@ -543,6 +600,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   if (length >= sizeof(msgBuf)) length = sizeof(msgBuf) - 1;
   memcpy(msgBuf, payload, length);
   msgBuf[length] = '\0';
+  Serial.printf("[MQTT CMD] Topik=%s Payload=%s\n", topic, msgBuf);
 
   StaticJsonDocument<384> doc;
   DeserializationError err = deserializeJson(doc, msgBuf);
@@ -974,6 +1032,8 @@ void loop() {
     if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println("[MQTT] Terhubung ke EMQX Cloud TLS Broker (Port 8883)!");
       mqttClient.subscribe(TOPIC_COMMANDS);
+      mqttClient.subscribe("grenvis/device/control");
+      Serial.printf("[MQTT] Subscribe perintah: %s & grenvis/device/control\n", TOPIC_COMMANDS);
     } else {
       Serial.printf("[MQTT] Gagal terhubung ke broker, rc=%d\n", mqttClient.state());
     }
@@ -996,22 +1056,40 @@ void loop() {
     }
     Serial.println("[WATCHDOG] Batas maksimum durasi pompa tercapai -> Safety Shutoff.");
   }
-  if (sliderManualActive && now >= sliderManualEndTime) {
-    stopSlider();
-    Serial.println("[WATCHDOG] Gerakan manual slider selesai.");
+  if (sliderManualActive) {
+    if (!sliderManualIgnoreLimit &&
+        ((strcmp(motorStateStr, "LEFT") == 0 && digitalRead(LIMIT_SW_LEFT) == LOW) ||
+         (strcmp(motorStateStr, "RIGHT") == 0 && digitalRead(LIMIT_SW_RIGHT) == LOW))) {
+      stopSlider();
+      lastMqttPubTime = 0;
+      Serial.println("[WATCHDOG] Limit switch tercapai saat gerak manual -> Slider dihentikan.");
+    } else if (now >= sliderManualEndTime) {
+      stopSlider();
+      lastMqttPubTime = 0;
+      Serial.println("[WATCHDOG] Gerakan manual slider selesai.");
+    }
   }
 
   // 3. Proteksi Ganda Limit Switch
   if (digitalRead(LIMIT_SW_LEFT) == LOW && digitalRead(LIMIT_SW_RIGHT) == LOW) {
-    stopSlider();
-    setPump(false);
-    currentState = STATE_ALARM_FAULT;
-    setEnvironmentalCommand(
-      "FAULT",
-      "CMD_EMERGENCY_STOP",
-      "PERINTAH: HENTIKAN MOTOR (LIMIT SWITCH GANDA)",
-      "{\"cmd\":\"CMD_EMERGENCY_STOP\"}"
-    );
+    if (!(sliderManualActive && sliderManualIgnoreLimit)) {
+      if (!armManualMode || strcmp(motorStateStr, "STOPPED") != 0) {
+        stopSlider();
+        setPump(false);
+        currentState = STATE_ALARM_FAULT;
+        setEnvironmentalCommand(
+          "FAULT",
+          "CMD_EMERGENCY_STOP",
+          "PERINTAH: HENTIKAN MOTOR (LIMIT SWITCH GANDA)",
+          "{\"cmd\":\"CMD_EMERGENCY_STOP\"}"
+        );
+      }
+      static unsigned long lastDualLimitWarn = 0;
+      if (now - lastDualLimitWarn >= 10000) {
+        lastDualLimitWarn = now;
+        Serial.println("[WARN] LIMIT_SW_LEFT (GPIO 18) & LIMIT_SW_RIGHT (GPIO 19) keduanya LOW! Cek switch Normally-Open atau aktifkan Bypass Limit di web.");
+      }
+    }
   }
 
   // 4. Baca Sensor Rutin & Evaluasi 4 Kondisi Tiap 250ms

@@ -37,6 +37,20 @@ describe('EMQX MQTT 3.1.1 over WebSocket Codec Tests', () => {
     assert.equal(parsed.publish.payload, payload);
   });
 
+  test('serializes L298N manual slider commands with duration and bypass options', () => {
+    const moveLeft = JSON.stringify({ cmd: 'CMD_SLIDER_LEFT', params: { duration: 3000, ignore_limit: true } });
+    const stopPkt = buildMqttPublishPacket('agrapatha/commands', JSON.stringify({ cmd: 'CMD_SLIDER_STOP' }));
+    const leftParsed = parseMqttPacket(buildMqttPublishPacket('agrapatha/commands', moveLeft));
+    const stopParsed = parseMqttPacket(stopPkt);
+    assert.ok(leftParsed && leftParsed.type === 'PUBLISH');
+    assert.ok(stopParsed && stopParsed.type === 'PUBLISH');
+    const decodedLeft = JSON.parse(leftParsed.publish.payload) as { cmd: string; params: { duration: number; ignore_limit: boolean } };
+    assert.equal(decodedLeft.cmd, 'CMD_SLIDER_LEFT');
+    assert.equal(decodedLeft.params.duration, 3000);
+    assert.equal(decodedLeft.params.ignore_limit, true);
+    assert.equal((JSON.parse(stopParsed.publish.payload) as { cmd: string }).cmd, 'CMD_SLIDER_STOP');
+  });
+
   test('decodes multiple coalesced MQTT frames in a single WebSocket binary buffer', () => {
     const suback = new Uint8Array([0x90, 0x03, 0x00, 0x01, 0x00]);
     const livePayload = JSON.stringify({
