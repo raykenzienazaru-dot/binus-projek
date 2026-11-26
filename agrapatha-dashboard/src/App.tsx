@@ -234,13 +234,13 @@ export const App: React.FC = () => {
       id: 1,
       time: '--:--:--',
       kind: 'sys',
-      text: 'AGRAPATHA Terminal Siap (L298N OUT3/OUT4 · IN3=GPIO16, IN4=GPIO17, ENB=5V | 4-DoF Arm GPIO 13,14,15,5).',
+      text: 'AGRAPATHA Terminal Siap (L298N OUT3/OUT4 · IN3=GPIO2, IN4=GPIO16, ENB=5V | 4-DoF Arm GPIO 13,14,15,5).',
     },
     {
       id: 2,
       time: '--:--:--',
       kind: 'sys',
-      text: 'Contoh cepat: ketik "help", "1 90", "servo 90 45 45 90", "L 3000", "R", "S", "C", "home", "estop", "reset".',
+      text: 'Contoh cepat: "help", "1 90", "servo 90 45 45 90", "0 0" (detach), "L 3000", "R", "S", "C", "rec", "loop".',
     },
   ]);
   const terminalHistoryRef = useRef<string[]>([]);
@@ -4133,7 +4133,7 @@ export const App: React.FC = () => {
                         </div>
                         <Terminal size={14} className="text-emerald-400 shrink-0" />
                         <span className="text-xs font-mono font-bold text-emerald-100 truncate">
-                          agrapatha@esp32:~$ · Terminal Kontrol L298N (OUT3/OUT4 · IN3:16 IN4:17) &amp; Arm 4-DoF
+                          agrapatha@esp32:~$ · Terminal Kontrol L298N (OUT3/OUT4 · IN3:2 IN4:16) &amp; Arm 4-DoF
                         </span>
                       </div>
 
@@ -4297,6 +4297,14 @@ export const App: React.FC = () => {
                         className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-violet-200 border border-[#284B41] text-[11px] font-mono font-bold cursor-pointer"
                       >
                         home
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('0 0')}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-slate-200 border border-[#284B41] text-[11px] font-mono font-bold cursor-pointer"
+                        title="Lepas sinyal PWM semua servo (detach)"
+                      >
+                        0 0 detach
                       </button>
                       <button
                         type="button"
@@ -4543,6 +4551,7 @@ export const App: React.FC = () => {
                         '3 60',
                         '4 90',
                         'servo 90 45 45 90',
+                        '0 0',
                         'L 3000',
                         'R 3000',
                         'L 2s bypass',
@@ -4978,7 +4987,7 @@ export const App: React.FC = () => {
                         status: mqttWssStatus === 'connected' && actuatorArmed ? 'SIAP KONTROL' : mqttWssStatus !== 'connected' ? 'WSS OFFLINE' : 'DIKUNCI',
                         accent: 'border-t-rose-500',
                         badge: mqttWssStatus === 'connected' && actuatorArmed ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200',
-                        detail: 'L298N OUT3/4 (IN3:16, IN4:17, ENB:5V) · Limit (18,19) · Pompa (23)',
+                        detail: 'L298N OUT3/4 (IN3:2, IN4:16, ENB:5V) · Limit (18,19) · Pompa (23)',
                       },
                     ].map((dev) => (
                       <article

@@ -70,8 +70,8 @@
 #endif
 
 // --- 5. ESP32 Main Node Actuator & Limit Pins (L298N OUT3 & OUT4) ---
-#define PIN_MOTOR_IN3           16 // L298N IN1/IN3 (Arah Kiri Rel)
-#define PIN_MOTOR_IN4           17 // L298N IN2/IN4 (Arah Kanan Rel)
+#define PIN_MOTOR_IN3           2  // L298N IN3 -> OUT3 (Arah Kiri Rel)
+#define PIN_MOTOR_IN4           16 // L298N IN4 -> OUT4 (Arah Kanan Rel)
 #define PIN_MOTOR_IN1           PIN_MOTOR_IN3 // Legacy alias
 #define PIN_MOTOR_IN2           PIN_MOTOR_IN4 // Legacy alias
 #define PIN_LIMIT_LEFT          18 // Limit Switch Left (INPUT_PULLUP, Active LOW)

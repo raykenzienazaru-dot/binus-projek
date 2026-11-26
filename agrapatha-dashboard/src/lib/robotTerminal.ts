@@ -22,17 +22,18 @@ export type RobotTerminalAction =
 
 export const TERMINAL_HELP_LINES: string[] = [
   '=== KONTROL TERMINAL L298N (OUT3/OUT4) & 4-DOF ARM ===',
-  'L298N Rel (IN3=16, IN4=17, ENB=5V):',
+  'L298N Rel (OUT3/OUT4 · IN3=GPIO2, IN4=GPIO16, ENB=5V):',
   '  L [ms/s] [bypass]  -> Geser kiri (cth: L | L 3000 | L 2s bypass)',
   '  R [ms/s] [bypass]  -> Geser kanan (cth: R | R 5s | kanan 1500)',
   '  S / stop           -> Hentikan motor L298N seketika',
   '  bypass on | off    -> Toggle abaikan limit switch GPIO 18/19',
-  '4-DoF Robot Arm (0-180 deg):',
+  '4-DoF Robot Arm (0-180 deg, Lazy Attach 500-2400us):',
   '  1 <deg> / base     -> Base J1 (GPIO 13), cth: 1 90 | base 120',
   '  2 <deg> / sh       -> Shoulder J2 (GPIO 14), cth: 2 60 | sh 45',
   '  3 <deg> / el       -> Elbow J3 (GPIO 15), cth: 3 80',
   '  4 <deg> / noz      -> Nozzle J4 (GPIO 5), cth: 4 90',
   '  servo b s e n      -> Set 4 servo sekaligus (cth: servo 90 45 45 90)',
+  '  0 0 / detach       -> Lepas tahanan PWM semua servo (detach)',
   '  home | park | manual | auto | retract',
   'Record & Otomatis Berulang (Teach & Repeat):',
   '  rec / rec start    -> Rekam gerakan rel + arm secara berurutan',
@@ -185,6 +186,9 @@ export function parseRobotTerminalCommand(
   }
 
   // Emergency & System presets
+  if (head === '0' || head === 'detach' || head === 'release' || head === 'lepas') {
+    return { type: 'mqtt', cmd: 'CMD_DETACH_SERVOS', humanLabel: 'Detach PWM Semua Servo (0 0)' };
+  }
   if (head === 'estop' || head === 'e-stop' || head === 'emergency' || (head === 'stop' && restLower[0] === 'all')) {
     return { type: 'mqtt', cmd: 'CMD_EMERGENCY_STOP', humanLabel: 'EMERGENCY STOP' };
   }

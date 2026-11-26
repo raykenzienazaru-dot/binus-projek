@@ -82,6 +82,11 @@ describe('Robot Terminal CLI Parser Tests', () => {
     assert.deepEqual(parseRobotTerminalCommand('loop', defaultAngles, false), { type: 'play', loop: true });
     assert.deepEqual(parseRobotTerminalCommand('stop loop', defaultAngles, false), { type: 'stop_playback' });
     assert.deepEqual(parseRobotTerminalCommand('semula', defaultAngles, false), { type: 'return_origin' });
+
+    const det1 = parseRobotTerminalCommand('0 0', defaultAngles, false);
+    assert.ok(det1 && det1.type === 'mqtt' && det1.cmd === 'CMD_DETACH_SERVOS');
+    const det2 = parseRobotTerminalCommand('detach', defaultAngles, false);
+    assert.ok(det2 && det2.type === 'mqtt' && det2.cmd === 'CMD_DETACH_SERVOS');
   });
 
   test('returns structured error for unknown command instead of throwing', () => {

@@ -14,7 +14,7 @@
  * - EMQX Cloud TLS Port 8883 (q2277711.ala.asia-southeast1.emqxsl.com).
  * - 4 Servo Langsung ke GPIO (13, 14, 15, 5) via ESP32Servo (Catu Daya Eksternal 5V-6V 3A).
  * - Moving Average Filter 5-Sample pada Soil Moisture + DHT22 Interval >= 2000ms.
- * - Linear Slider 3-Zona L298N OUT3 & OUT4 (IN3: GPIO 16, IN4: GPIO 17, ENB: 5V) + Limit SW (18, 19).
+ * - Linear Slider 3-Zona L298N OUT3 & OUT4 (IN3: GPIO 2, IN4: GPIO 16, ENB: 5V) + Limit SW (18, 19).
  * - Pompa Air Relay (GPIO 23, Active LOW, Glitch-Free Init + Watchdog Timer).
  * - Dual-Way MQTT (`agrapatha/telemetry` & `agrapatha/commands`) + ESP-NOW ke ESP32-CAM.
  * ==============================================================================
@@ -52,12 +52,12 @@
 #define FLAME_CH5_PIN        33   // Paling Kanan
 #define FLAME_ACTIVE_STATE   LOW
 
-// Linear Slider (L298N Driver OUT3 & OUT4 via IN3/IN4 & Limit Switches)
+// Linear Slider (L298N Driver OUT3 & OUT4 via IN3=GPIO 2, IN4=GPIO 16 & Limit Switches)
 #ifndef MOTOR_IN3
-  #define MOTOR_IN3          16   // L298N IN3 -> OUT3 (Arah Kiri)
+  #define MOTOR_IN3          2    // L298N IN3 -> OUT3 (Arah Kiri)
 #endif
 #ifndef MOTOR_IN4
-  #define MOTOR_IN4          17   // L298N IN4 -> OUT4 (Arah Kanan)
+  #define MOTOR_IN4          16   // L298N IN4 -> OUT4 (Arah Kanan)
 #endif
 #ifndef MOTOR_IN1
   #define MOTOR_IN1          MOTOR_IN3
@@ -275,9 +275,41 @@ int readFilteredAdc(uint8_t pin, uint8_t samples = 5) {
   return (int)(sum / samples);
 }
 
+uint8_t getServoPin(Servo &srv) {
+  if (&srv == &servoBase)     return SERVO_BASE_PIN;
+  if (&srv == &servoShoulder) return SERVO_SHOULDER_PIN;
+  if (&srv == &servoElbow)    return SERVO_ELBOW_PIN;
+  return SERVO_NOZZLE_PIN;
+}
+
+void ensureServoAttached(Servo &srv) {
+  if (!srv.attached()) {
+    srv.attach(getServoPin(srv), 500, 2400);
+  }
+}
+
+void writeServoImmediate(Servo &srv, int &currentAngle, int targetAngle) {
+  targetAngle = constrain(targetAngle, 0, 180);
+  ensureServoAttached(srv);
+  currentAngle = targetAngle;
+  srv.write(targetAngle);
+}
+
+void detachAllServos() {
+  servoBase.detach();
+  servoShoulder.detach();
+  servoElbow.detach();
+  servoNozzle.detach();
+  Serial.println("[STOP] Semua servo di-detach (bebas / melepas sinyal PWM).");
+}
+
 void moveServoSmooth(Servo &srv, int &currentAngle, int targetAngle, int stepDelay = 6) {
   targetAngle = constrain(targetAngle, 0, 180);
-  if (currentAngle == targetAngle) return;
+  ensureServoAttached(srv);
+  if (currentAngle == targetAngle) {
+    srv.write(targetAngle);
+    return;
+  }
   int step = (targetAngle > currentAngle) ? 1 : -1;
   uint8_t tick = 0;
   while (currentAngle != targetAngle) {
@@ -531,12 +563,16 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_SET_SERVO") == 0) {
-    if (params.containsKey("base"))     moveServoSmooth(servoBase, angleBase, params["base"], 5);
-    if (params.containsKey("shoulder")) moveServoSmooth(servoShoulder, angleShoulder, params["shoulder"], 5);
-    if (params.containsKey("elbow"))    moveServoSmooth(servoElbow, angleElbow, params["elbow"], 5);
-    if (params.containsKey("nozzle"))   moveServoSmooth(servoNozzle, angleNozzle, params["nozzle"], 5);
-    Serial.printf("[EKSEKUSI] Sudut Servo Manual -> Base:%d Sh:%d El:%d Noz:%d\n",
+    if (params.containsKey("base"))     writeServoImmediate(servoBase, angleBase, params["base"]);
+    if (params.containsKey("shoulder")) writeServoImmediate(servoShoulder, angleShoulder, params["shoulder"]);
+    if (params.containsKey("elbow"))    writeServoImmediate(servoElbow, angleElbow, params["elbow"]);
+    if (params.containsKey("nozzle"))   writeServoImmediate(servoNozzle, angleNozzle, params["nozzle"]);
+    Serial.printf("[OK] Sudut Servo Manual -> Base:%d Sh:%d El:%d Noz:%d\n",
                   angleBase, angleShoulder, angleElbow, angleNozzle);
+    lastMqttPubTime = 0;
+  }
+  else if (strcmp(cmdName, "CMD_DETACH_SERVOS") == 0) {
+    detachAllServos();
     lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_STOP_PUMP") == 0) {
@@ -558,7 +594,7 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
       sliderManualIgnoreLimit = ignoreLim;
       sliderManualActive = true;
       sliderManualEndTime = millis() + dur;
-      Serial.printf("[EKSEKUSI] L298N Slider KIRI (%lu ms, bypass_limit=%d, GPIO16=HIGH, GPIO17=LOW).\n",
+      Serial.printf("[EKSEKUSI] L298N OUT3/4 KIRI (%lu ms, bypass=%d, IN3(GPIO2)=HIGH, IN4(GPIO16)=LOW).\n",
                     dur, ignoreLim ? 1 : 0);
     } else {
       sliderManualActive = false;
@@ -579,7 +615,7 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
       sliderManualIgnoreLimit = ignoreLim;
       sliderManualActive = true;
       sliderManualEndTime = millis() + dur;
-      Serial.printf("[EKSEKUSI] L298N Slider KANAN (%lu ms, bypass_limit=%d, GPIO16=LOW, GPIO17=HIGH).\n",
+      Serial.printf("[EKSEKUSI] L298N OUT3/4 KANAN (%lu ms, bypass=%d, IN3(GPIO2)=LOW, IN4(GPIO16)=HIGH).\n",
                     dur, ignoreLim ? 1 : 0);
     } else {
       sliderManualActive = false;
@@ -593,7 +629,7 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     if (currentState == STATE_ALARM_FAULT && armManualMode) {
       currentState = STATE_MANUAL;
     }
-    Serial.println("[EKSEKUSI] L298N Slider BERHENTI (GPIO16=LOW, GPIO17=LOW).");
+    Serial.println("[EKSEKUSI] L298N OUT3/4 BERHENTI (IN3(GPIO2)=LOW, IN4(GPIO16)=LOW).");
     lastMqttPubTime = 0;
   }
   else if (strcmp(cmdName, "CMD_TRIGGER_CAPTURE") == 0 || strcmp(cmdName, "C") == 0) {
@@ -626,7 +662,12 @@ void executeTerminalTextCommand(const char* rawLine) {
   unsigned long dur = 3000;
 
   if (strcasecmp(rawLine, "help") == 0 || strcmp(rawLine, "?") == 0) {
-    Serial.println("[TERMINAL HELP] L [ms] [bypass] | R [ms] [bypass] | S | C | 1..4 <deg> | servo b s e n | home | manual | auto | pump on [ms] | pump off | estop | reset");
+    Serial.println("[TERMINAL HELP] L [ms] [bypass] | R [ms] [bypass] | S | C | 1..4 <deg> | servo b s e n | 0 0 (detach) | home | manual | auto | pump on/off | estop | reset");
+    return;
+  }
+  if (strcasecmp(rawLine, "0 0") == 0 || strcmp(rawLine, "0") == 0 ||
+      strcasecmp(rawLine, "detach") == 0 || strcasecmp(rawLine, "release") == 0) {
+    executeDashboardCommand("CMD_DETACH_SERVOS", p);
     return;
   }
   if (strcasecmp(rawLine, "estop") == 0 || strcasecmp(rawLine, "emergency") == 0) {
@@ -939,6 +980,7 @@ void handleFireModeStaged() {
       if (angleBase != targetYaw) {
         angleBase += (targetYaw > angleBase) ? 2 : -2;
         if (abs(targetYaw - angleBase) <= 2) angleBase = targetYaw;
+        ensureServoAttached(servoBase);
         servoBase.write(constrain(angleBase, 0, 180));
       } else {
         requestCameraCapture(); // Trigger foto saat menghadap sumber api
@@ -952,6 +994,7 @@ void handleFireModeStaged() {
       if (angleShoulder != targetShoulder) {
         angleShoulder += (targetShoulder > angleShoulder) ? 2 : -2;
         if (abs(targetShoulder - angleShoulder) <= 2) angleShoulder = targetShoulder;
+        ensureServoAttached(servoShoulder);
         servoShoulder.write(constrain(angleShoulder, 0, 180));
       } else {
         currentFireStage = STAGE_SERVO3_REACH;
@@ -964,6 +1007,7 @@ void handleFireModeStaged() {
       if (angleElbow < targetElbow) {
         angleElbow += 2;
         if (angleElbow > targetElbow) angleElbow = targetElbow;
+        ensureServoAttached(servoElbow);
         servoElbow.write(constrain(angleElbow, 0, 180));
       } else {
         currentFireStage = STAGE_SERVO4_NOZZLE;
@@ -976,6 +1020,7 @@ void handleFireModeStaged() {
       if (angleNozzle != targetNozzle) {
         angleNozzle += (targetNozzle > angleNozzle) ? 2 : -2;
         if (abs(targetNozzle - angleNozzle) <= 2) angleNozzle = targetNozzle;
+        ensureServoAttached(servoNozzle);
         servoNozzle.write(constrain(angleNozzle, 0, 180));
       } else {
         currentFireStage = STAGE_VERIFY_FIRE;
@@ -1086,16 +1131,7 @@ void setup() {
   servoShoulder.setPeriodHertz(50);
   servoElbow.setPeriodHertz(50);
   servoNozzle.setPeriodHertz(50);
-
-  servoBase.attach(SERVO_BASE_PIN, 500, 2500);
-  servoShoulder.attach(SERVO_SHOULDER_PIN, 500, 2500);
-  servoElbow.attach(SERVO_ELBOW_PIN, 500, 2500);
-  servoNozzle.attach(SERVO_NOZZLE_PIN, 500, 2500);
-
-  servoBase.write(angleBase);
-  servoShoulder.write(angleShoulder);
-  servoElbow.write(angleElbow);
-  servoNozzle.write(angleNozzle);
+  // Servo belum di-attach saat boot (lazy-attach 500..2400us saat diperintah) agar tidak menyentak ke posisi default.
 
   dht.begin();
 
@@ -1308,6 +1344,7 @@ void loop() {
               lastSweepTime = now;
               const int sweepTargets[3] = { 65, 115, 90 };
               angleNozzle = sweepTargets[sweepStep];
+              ensureServoAttached(servoNozzle);
               servoNozzle.write(angleNozzle);
               sweepStep++;
               if (sweepStep >= 3) {
