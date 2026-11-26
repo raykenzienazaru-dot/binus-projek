@@ -3821,7 +3821,7 @@ export const App: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-emerald-200/80">
                       <div>
                         <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
-                          Kontrol Manual Motor Rel Linear L298N (GPIO 16 IN1 · GPIO 17 IN2 · ENA 5V)
+                          Kontrol Manual Motor Rel Linear L298N (OUT3 &amp; OUT4 · IN3: GPIO 16 · IN4: GPIO 17 · ENB 5V)
                         </span>
                         <span className="text-[11px] text-[#46655D] block">
                           Klik <strong>Rel Kiri/Kanan</strong> untuk gerak berdurasi, atau <strong>Tekan &amp; Tahan</strong> untuk menggerakkan motor terus hingga dilepas.
@@ -3835,9 +3835,9 @@ export const App: React.FC = () => {
                         }`}
                       >
                         {movementStatus === 'left_command_sent'
-                          ? '◀ BERGERAK KIRI (IN1=HIGH)'
+                          ? '◀ BERGERAK KIRI (IN3=HIGH)'
                           : movementStatus === 'right_command_sent'
-                            ? 'BERGERAK KANAN (IN2=HIGH) ▶'
+                            ? 'BERGERAK KANAN (IN4=HIGH) ▶'
                             : '■ BERHENTI (STOPPED)'}
                       </span>
                     </div>
@@ -4489,7 +4489,7 @@ export const App: React.FC = () => {
                         status: mqttWssStatus === 'connected' && actuatorArmed ? 'SIAP KONTROL' : mqttWssStatus !== 'connected' ? 'WSS OFFLINE' : 'DIKUNCI',
                         accent: 'border-t-rose-500',
                         badge: mqttWssStatus === 'connected' && actuatorArmed ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200',
-                        detail: 'L298N (16,17) · Limit (18,19) · Pompa Relay (23) · Zona 1-3',
+                        detail: 'L298N OUT3/4 (IN3:16, IN4:17, ENB:5V) · Limit (18,19) · Pompa (23)',
                       },
                     ].map((dev) => (
                       <article

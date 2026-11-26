@@ -14,7 +14,7 @@
  * - EMQX Cloud TLS Port 8883 (q2277711.ala.asia-southeast1.emqxsl.com).
  * - 4 Servo Langsung ke GPIO (13, 14, 15, 5) via ESP32Servo (Catu Daya Eksternal 5V-6V 3A).
  * - Moving Average Filter 5-Sample pada Soil Moisture + DHT22 Interval >= 2000ms.
- * - Linear Slider 3-Zona L298N (IN1: 16, IN2: 17) + Limit SW (18, 19) + Travel Watchdog.
+ * - Linear Slider 3-Zona L298N OUT3 & OUT4 (IN3: GPIO 16, IN4: GPIO 17, ENB: 5V) + Limit SW (18, 19).
  * - Pompa Air Relay (GPIO 23, Active LOW, Glitch-Free Init + Watchdog Timer).
  * - Dual-Way MQTT (`agrapatha/telemetry` & `agrapatha/commands`) + ESP-NOW ke ESP32-CAM.
  * ==============================================================================
@@ -52,12 +52,18 @@
 #define FLAME_CH5_PIN        33   // Paling Kanan
 #define FLAME_ACTIVE_STATE   LOW
 
-// Linear Slider (L298N Driver & Limit Switches)
+// Linear Slider (L298N Driver OUT3 & OUT4 via IN3/IN4 & Limit Switches)
+#ifndef MOTOR_IN3
+  #define MOTOR_IN3          16   // L298N IN3 -> OUT3 (Arah Kiri)
+#endif
+#ifndef MOTOR_IN4
+  #define MOTOR_IN4          17   // L298N IN4 -> OUT4 (Arah Kanan)
+#endif
 #ifndef MOTOR_IN1
-  #define MOTOR_IN1          16   // L298N IN1 (Arah Kiri)
+  #define MOTOR_IN1          MOTOR_IN3
 #endif
 #ifndef MOTOR_IN2
-  #define MOTOR_IN2          17   // L298N IN2 (Arah Kanan)
+  #define MOTOR_IN2          MOTOR_IN4
 #endif
 #define LIMIT_SW_LEFT        18   // Limit Kiri (INPUT_PULLUP, Aktif LOW)
 #define LIMIT_SW_RIGHT       19   // Limit Kanan (INPUT_PULLUP, Aktif LOW)
@@ -1258,7 +1264,7 @@ void loop() {
         "\"flame_angle\":%d,"
         "\"zone\":%d,"
         "\"motor_state\":\"%s\","
-        "\"motor_driver\":\"L298N_ARM_GPIO\","
+        "\"motor_driver\":\"L298N_OUT3_OUT4\","
         "\"limit_left\":%s,"
         "\"limit_right\":%s,"
         "\"pump_status\":%s,"
