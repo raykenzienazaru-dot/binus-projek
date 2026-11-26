@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test src/lib/bmkgService.test.ts src/lib/visionService.test.ts src/lib/gatewayService.test.ts src/lib/liveOnlyModel.test.ts src/lib/liveTelemetryIntegration.test.ts src/lib/offlineBehavior.test.ts src/lib/mqttWssClient.test.ts src/lib/robotTerminal.test.ts",
+    "test": "node --experimental-strip-types --test src/lib/bmkgService.test.ts src/lib/visionService.test.ts src/lib/gatewayService.test.ts src/lib/liveOnlyModel.test.ts src/lib/liveTelemetryIntegration.test.ts src/lib/offlineBehavior.test.ts src/lib/mqttWssClient.test.ts src/lib/robotTerminal.test.ts src/lib/robotRoutine.test.ts",
     "test:mqtt": "node ../scripts/test-emqx.mjs",
     "preview": "vite preview"
   },

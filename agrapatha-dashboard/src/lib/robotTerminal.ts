@@ -5,6 +5,12 @@ export type RobotTerminalAction =
   | { type: 'capture_cam' }
   | { type: 'set_limit_bypass'; enabled: boolean }
   | { type: 'set_lock'; locked: boolean }
+  | { type: 'rec_start' }
+  | { type: 'rec_stop' }
+  | { type: 'rec_clear' }
+  | { type: 'play'; loop: boolean }
+  | { type: 'stop_playback' }
+  | { type: 'return_origin' }
   | {
       type: 'mqtt';
       cmd: string;
@@ -28,6 +34,12 @@ export const TERMINAL_HELP_LINES: string[] = [
   '  4 <deg> / noz      -> Nozzle J4 (GPIO 5), cth: 4 90',
   '  servo b s e n      -> Set 4 servo sekaligus (cth: servo 90 45 45 90)',
   '  home | park | manual | auto | retract',
+  'Record & Otomatis Berulang (Teach & Repeat):',
+  '  rec / rec start    -> Rekam gerakan rel + arm secara berurutan',
+  '  rec stop / save    -> Selesai merekam & simpan gerakan',
+  '  play / run         -> Jalankan rekaman 1x + kembali ke posisi awal',
+  '  loop               -> Ulang terus menerus (otomatis & balik awal)',
+  '  loop stop          -> Hentikan auto-loop | return / semula -> Balik awal',
   'Kamera, Pompa & Safety:',
   '  C / cam / foto     -> Potret ESP32-CAM via MQTT + Railway',
   '  pump on [ms/s]     -> Nyalakan pompa (GPIO 23) | pump off',
@@ -142,6 +154,34 @@ export function parseRobotTerminalCommand(
     }
     if (arg === 'off' || arg === 'false' || arg === '0') return { type: 'set_limit_bypass', enabled: true };
     if (arg === 'on' || arg === 'true' || arg === '1') return { type: 'set_limit_bypass', enabled: false };
+  }
+
+  // Record, Playback & Return-to-Origin ("Teach & Repeat")
+  if (head === 'rec' || head === 'record' || head === 'rekam') {
+    const arg = restLower[0];
+    if (arg === 'stop' || arg === 'save' || arg === 'selesai' || arg === 'off') {
+      return { type: 'rec_stop' };
+    }
+    if (arg === 'clear' || arg === 'hapus' || arg === 'del') {
+      return { type: 'rec_clear' };
+    }
+    return { type: 'rec_start' };
+  }
+  if (head === 'play' || head === 'run' || head === 'putar') {
+    const isLoop = restLower[0] === 'loop' || restLower[0] === 'auto';
+    return { type: 'play', loop: isLoop };
+  }
+  if (head === 'loop') {
+    if (restLower[0] === 'stop' || restLower[0] === 'off' || restLower[0] === 'berhenti') {
+      return { type: 'stop_playback' };
+    }
+    return { type: 'play', loop: true };
+  }
+  if (head === 'stop' && (restLower[0] === 'loop' || restLower[0] === 'play' || restLower[0] === 'auto')) {
+    return { type: 'stop_playback' };
+  }
+  if (head === 'return' || head === 'semula' || head === 'asal') {
+    return { type: 'return_origin' };
   }
 
   // Emergency & System presets

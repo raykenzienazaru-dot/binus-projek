@@ -26,12 +26,15 @@ import {
   Layers,
   LayoutGrid,
   Leaf,
+  Play,
+  Repeat,
   RotateCcw,
   ShieldCheck,
   Sliders,
   Sparkles,
   Square,
   Terminal,
+  Trash2,
   Upload,
   Video,
   VideoOff,
@@ -82,6 +85,14 @@ import {
   TERMINAL_HELP_LINES,
   parseRobotTerminalCommand,
 } from './lib/robotTerminal';
+import {
+  appendRecordedStep,
+  buildReturnToOriginCommands,
+  loadSavedRoutine,
+  saveRecordedRoutine,
+  type RecordedRoutineStep,
+  type RobotRoutine,
+} from './lib/robotRoutine';
 
 const SECTION_IDS = [
   'overview',
@@ -237,6 +248,35 @@ export const App: React.FC = () => {
   const terminalSeqRef = useRef<number>(3);
   const terminalScrollRef = useRef<HTMLDivElement | null>(null);
   const lastTerminalRxSigRef = useRef<string>('');
+  const [isRecordingRoutine, setIsRecordingRoutine] = useState<boolean>(false);
+  const [recordingSteps, setRecordingSteps] = useState<RecordedRoutineStep[]>([]);
+  const [recordingInitialAngles, setRecordingInitialAngles] = useState<[number, number, number, number]>([90, 45, 45, 90]);
+  const [savedRoutine, setSavedRoutine] = useState<RobotRoutine | null>(() => loadSavedRoutine());
+  const [autoReturnToOrigin, setAutoReturnToOrigin] = useState<boolean>(true);
+  const [playbackStatus, setPlaybackStatus] = useState<{
+    mode: 'idle' | 'once' | 'loop' | 'returning';
+    loopIteration: number;
+    activeStepIdx: number;
+    totalSteps: number;
+  }>({ mode: 'idle', loopIteration: 0, activeStepIdx: -1, totalSteps: 0 });
+  const isRecordingRef = useRef<boolean>(false);
+  const recordingStepsRef = useRef<RecordedRoutineStep[]>([]);
+  recordingStepsRef.current = recordingSteps;
+  const recordingInitialAnglesRef = useRef<[number, number, number, number]>(recordingInitialAngles);
+  recordingInitialAnglesRef.current = recordingInitialAngles;
+  const autoReturnRef = useRef<boolean>(autoReturnToOrigin);
+  autoReturnRef.current = autoReturnToOrigin;
+  const routineStepIdRef = useRef<number>(1);
+  const playbackRunIdRef = useRef<number>(0);
+  const isPlayingRef = useRef<boolean>(false);
+  const playbackAbortSleepRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      playbackRunIdRef.current++;
+      isPlayingRef.current = false;
+      playbackAbortSleepRef.current?.();
+    };
+  }, []);
   const manualSafetyLockRef = useRef<boolean>(false);
   const railHoldActiveRef = useRef<'L' | 'R' | null>(null);
   const mqttWssRef = useRef<MqttWssClient | null>(null);
@@ -1135,6 +1175,42 @@ export const App: React.FC = () => {
     }
   };
 
+  const sleepInterruptible = useCallback((ms: number, runId: number): Promise<boolean> => {
+    if (playbackRunIdRef.current !== runId) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (playbackAbortSleepRef.current === cancel) {
+          playbackAbortSleepRef.current = null;
+        }
+        resolve(playbackRunIdRef.current === runId);
+      }, Math.max(0, ms));
+      const cancel = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      playbackAbortSleepRef.current = cancel;
+    });
+  }, []);
+
+  const stopPlayback = useCallback(
+    (reason?: string, alsoStopMotor = true) => {
+      const wasRunning = isPlayingRef.current;
+      playbackRunIdRef.current++;
+      isPlayingRef.current = false;
+      playbackAbortSleepRef.current?.();
+      playbackAbortSleepRef.current = null;
+      setPlaybackStatus({ mode: 'idle', loopIteration: 0, activeStepIdx: -1, totalSteps: 0 });
+      if (wasRunning && alsoStopMotor && mqttWssStatusRef.current === 'connected' && mqttWssRef.current) {
+        mqttWssRef.current.publish('agrapatha/commands', JSON.stringify({ cmd: 'CMD_SLIDER_STOP' }));
+      }
+      if (wasRunning && reason) {
+        appendTerminalLog('sys', reason);
+        showToast(reason);
+      }
+    },
+    [appendTerminalLog, showToast]
+  );
+
   // Dispatch two-way executable robot commands to MQTT `agrapatha/commands`
   const dispatchRobotCommand = useCallback(
     (cmdName: string, humanLabel?: string, params?: Record<string, unknown>) => {
@@ -1144,6 +1220,9 @@ export const App: React.FC = () => {
         cmdName === 'CMD_SLIDER_STOP' ||
         cmdName === 'S';
       const isCameraCapture = cmdName === 'CMD_TRIGGER_CAPTURE' || cmdName === 'C';
+      if (cmdName === 'CMD_EMERGENCY_STOP' && isPlayingRef.current) {
+        stopPlayback('[LOOP DIHENTIKAN] E-STOP dipicu!', false);
+      }
       if (mqttWssStatus !== 'connected' || !mqttWssRef.current) {
         if (mqttWssStatus !== 'connecting') {
           startMqttWssConnection(mqttHostInput, mqttUserInput, mqttPassInput, true);
@@ -1169,15 +1248,30 @@ export const App: React.FC = () => {
         else if (cmdName === 'CMD_SLIDER_STOP' || cmdName === 'S' || cmdName === 'CMD_EMERGENCY_STOP') {
           setMovementStatus('stop_command_sent');
         } else if (isCameraCapture) setMovementStatus('capture_command_sent');
+
+        if (isRecordingRef.current && !isPlayingRef.current) {
+          setRecordingSteps((prev) =>
+            appendRecordedStep(prev, {
+              id: routineStepIdRef.current++,
+              cmd: cmdName,
+              label: humanLabel || cmdName,
+              params,
+              timestampMs: Date.now(),
+            })
+          );
+        }
+
         appendTerminalLog('tx', `${humanLabel ? `${humanLabel} ` : ''}${payloadJson}`);
-        showToast(`Perintah Terkirim: ${humanLabel || cmdName}`);
+        if (!isPlayingRef.current) {
+          showToast(`Perintah Terkirim: ${humanLabel || cmdName}`);
+        }
         return true;
       }
       appendTerminalLog('err', 'Gagal mengirim payload ke broker EMQX.');
       showToast('Gagal mengirim payload ke broker EMQX.');
       return false;
     },
-    [mqttWssStatus, actuatorArmed, mqttHostInput, mqttUserInput, mqttPassInput, startMqttWssConnection, appendTerminalLog, showToast]
+    [mqttWssStatus, actuatorArmed, mqttHostInput, mqttUserInput, mqttPassInput, startMqttWssConnection, stopPlayback, appendTerminalLog, showToast]
   );
 
   // Trigger fresh photo capture on ESP32-CAM directly from dashboard (Permitted without ARM AKTUATOR)
@@ -1191,6 +1285,17 @@ export const App: React.FC = () => {
       streamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
       setIsVideoReady(false);
+    }
+
+    if (isRecordingRef.current && !isPlayingRef.current) {
+      setRecordingSteps((prev) =>
+        appendRecordedStep(prev, {
+          id: routineStepIdRef.current++,
+          cmd: 'CMD_TRIGGER_CAPTURE',
+          label: 'Foto ESP32-CAM',
+          timestampMs: Date.now(),
+        })
+      );
     }
 
     const triggerStartMs = Date.now();
@@ -1208,11 +1313,13 @@ export const App: React.FC = () => {
 
     const reqRes = await requestEsp32CamCapture();
     appendTerminalLog('tx', `Foto ESP32-CAM (${mqttSent ? 'MQTT + ' : ''}Railway capture-request seq=${reqRes?.seq ?? '--'})`);
-    showToast(
-      mqttSent
-        ? 'Meminta ESP32-CAM memotret via MQTT + Railway...'
-        : 'Meminta ESP32-CAM memotret via Railway be-binus...'
-    );
+    if (!isPlayingRef.current) {
+      showToast(
+        mqttSent
+          ? 'Meminta ESP32-CAM memotret via MQTT + Railway...'
+          : 'Meminta ESP32-CAM memotret via Railway be-binus...'
+      );
+    }
 
     try {
       let receivedFresh = false;
@@ -1231,7 +1338,7 @@ export const App: React.FC = () => {
       }
 
       const loaded = await handleFetchGatewayFrame(true);
-      if (!loaded && !receivedFresh) {
+      if (!loaded && !receivedFresh && !isPlayingRef.current) {
         showToast('Permintaan foto dikirim. Pastikan ESP32-CAM menyala & terhubung Wi-Fi untuk melihat hasil foto.');
       }
     } finally {
@@ -1243,6 +1350,9 @@ export const App: React.FC = () => {
     setActuatorArmed((prev) => {
       const next = !prev;
       manualSafetyLockRef.current = !next;
+      if (!next) {
+        stopPlayback('[KUNCI] Kontrol dikunci — pemutaran otomatis dihentikan.');
+      }
       const msg = next
         ? 'Kontrol Aktuator Dibuka: L298N OUT3/OUT4, 4-DoF Arm & Pompa siap.'
         : 'Kontrol Aktuator Dikunci Manual (Read-Only).';
@@ -1250,12 +1360,16 @@ export const App: React.FC = () => {
       showToast(msg);
       return next;
     });
-  }, [appendTerminalLog, showToast]);
+  }, [stopPlayback, appendTerminalLog, showToast]);
 
   // L298N Linear Slider & Camera Trigger Wrapper
   const handleRailCommand = useCallback(
     (cmd: 'L' | 'R' | 'S' | 'C', durationMs: number = 3000) => {
       railHoldActiveRef.current = null;
+      if (cmd === 'S' && isPlayingRef.current) {
+        stopPlayback('[STOP] Auto-Loop dihentikan manual.');
+        return;
+      }
       if (cmd === 'L') {
         const params: Record<string, unknown> = { duration: durationMs };
         if (ignoreRailLimits) params.ignore_limit = true;
@@ -1282,7 +1396,7 @@ export const App: React.FC = () => {
       }
       dispatchRobotCommand('CMD_TRIGGER_CAPTURE', 'Ambil Foto ESP32-CAM (C)');
     },
-    [ignoreRailLimits, dispatchRobotCommand]
+    [ignoreRailLimits, stopPlayback, dispatchRobotCommand]
   );
 
   const handleRailHoldStart = useCallback(
@@ -1305,6 +1419,228 @@ export const App: React.FC = () => {
     railHoldActiveRef.current = null;
     dispatchRobotCommand('CMD_SLIDER_STOP', 'Stop Rel L298N (Lepas Tahan)');
   }, [dispatchRobotCommand]);
+
+  // --- Record, Auto-Loop & Kembali ke Semula (Teach & Repeat) ---
+  const handleStartRecording = useCallback(() => {
+    if (isPlayingRef.current) {
+      stopPlayback();
+    }
+    const startAngles: [number, number, number, number] =
+      isLiveTelemetry && !isTelemetryStale && servoAngles && servoAngles.length >= 4
+        ? [
+            Math.max(0, Math.min(180, Math.round(servoAngles[0]))),
+            Math.max(0, Math.min(180, Math.round(servoAngles[1]))),
+            Math.max(0, Math.min(180, Math.round(servoAngles[2]))),
+            Math.max(0, Math.min(180, Math.round(servoAngles[3]))),
+          ]
+        : [...manualServoAngles];
+    isRecordingRef.current = true;
+    recordingStepsRef.current = [];
+    recordingInitialAnglesRef.current = startAngles;
+    setIsRecordingRoutine(true);
+    setRecordingInitialAngles(startAngles);
+    setRecordingSteps([]);
+    const msg = `[REC MULAI] Titik awal Arm=[${startAngles.join(',')}]. Gerakkan rel L298N / Arm / Pompa sekarang, lalu klik "Stop Rec".`;
+    appendTerminalLog('sys', msg);
+    showToast('Perekaman gerakan dimulai! Lakukan gerakan sekarang.');
+  }, [isLiveTelemetry, isTelemetryStale, servoAngles, manualServoAngles, stopPlayback, appendTerminalLog, showToast]);
+
+  const handleStopRecording = useCallback((): RobotRoutine | null => {
+    isRecordingRef.current = false;
+    setIsRecordingRoutine(false);
+    const steps = recordingStepsRef.current;
+    if (steps.length === 0) {
+      appendTerminalLog('sys', '[REC BATAL] Belum ada pergerakan yang direkam.');
+      showToast('Perekaman dihentikan (belum ada langkah).');
+      return null;
+    }
+    const routine: RobotRoutine = {
+      name: `Rutinitas (${steps.length} langkah)`,
+      createdAt: new Date().toISOString(),
+      initialServoAngles: recordingInitialAnglesRef.current,
+      steps,
+    };
+    setSavedRoutine(routine);
+    saveRecordedRoutine(routine);
+    appendTerminalLog(
+      'sys',
+      `[REC DISIMPAN] ${steps.length} langkah disimpan. Klik "Putar 1x" atau "Auto Loop" (otomatis & kembali ke semula).`
+    );
+    showToast(`Tersimpan ${steps.length} langkah gerakan! Siap diputar otomatis.`);
+    return routine;
+  }, [appendTerminalLog, showToast]);
+
+  const handleClearRoutine = useCallback(() => {
+    if (isPlayingRef.current) stopPlayback();
+    isRecordingRef.current = false;
+    setIsRecordingRoutine(false);
+    setRecordingSteps([]);
+    setSavedRoutine(null);
+    saveRecordedRoutine(null);
+    appendTerminalLog('sys', '[REC HAPUS] Rekaman pergerakan dihapus.');
+    showToast('Rekaman pergerakan dihapus.');
+  }, [stopPlayback, appendTerminalLog, showToast]);
+
+  const handleReturnToOriginNow = useCallback(async () => {
+    if (isPlayingRef.current) {
+      stopPlayback();
+    }
+    if (mqttWssStatusRef.current !== 'connected') {
+      dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Kembali ke Semula');
+      return;
+    }
+    const runId = ++playbackRunIdRef.current;
+    isPlayingRef.current = true;
+    const routineSource: Pick<RobotRoutine, 'initialServoAngles' | 'steps'> = savedRoutine ?? {
+      initialServoAngles: [90, 45, 45, 90],
+      steps: [{ id: 0, cmd: 'CMD_ARM_HOME', label: 'Home', recordedAtMs: 0, waitAfterMs: 600 }],
+    };
+    const returnActions = buildReturnToOriginCommands(routineSource, ignoreRailLimits);
+    if (returnActions.length === 0) {
+      const [b, s, e, n] = routineSource.initialServoAngles;
+      returnActions.push({
+        cmd: 'CMD_SET_SERVO',
+        label: `Kembali Semula Arm (${b}°/${s}°/${e}°/${n}°)`,
+        params: { base: b, shoulder: s, elbow: e, nozzle: n },
+        waitMs: 700,
+      });
+    }
+    setPlaybackStatus({ mode: 'returning', loopIteration: 0, activeStepIdx: -1, totalSteps: returnActions.length });
+    appendTerminalLog('sys', '[↩ KEMBALI SEMULA] Mengembalikan Arm & L298N ke posisi awal...');
+    for (const act of returnActions) {
+      if (playbackRunIdRef.current !== runId) break;
+      if (act.cmd === 'CMD_SET_SERVO' && act.params) {
+        const b = Number(act.params.base ?? manualServoAngles[0]);
+        const s = Number(act.params.shoulder ?? manualServoAngles[1]);
+        const e = Number(act.params.elbow ?? manualServoAngles[2]);
+        const n = Number(act.params.nozzle ?? manualServoAngles[3]);
+        setManualServoAngles([b, s, e, n]);
+      }
+      dispatchRobotCommand(act.cmd, act.label, act.params);
+      const ok = await sleepInterruptible(act.waitMs, runId);
+      if (!ok) break;
+    }
+    if (playbackRunIdRef.current === runId) {
+      isPlayingRef.current = false;
+      setPlaybackStatus({ mode: 'idle', loopIteration: 0, activeStepIdx: -1, totalSteps: 0 });
+      appendTerminalLog('sys', '[↩ KEMBALI SEMULA] Posisi awal tercapai.');
+    }
+  }, [savedRoutine, ignoreRailLimits, manualServoAngles, stopPlayback, dispatchRobotCommand, appendTerminalLog, sleepInterruptible]);
+
+  const handleStartPlayback = useCallback(
+    async (loopForever: boolean) => {
+      let targetRoutine = savedRoutine;
+      if (isRecordingRef.current) {
+        targetRoutine = handleStopRecording();
+      }
+      if (!targetRoutine || targetRoutine.steps.length === 0) {
+        const msg = 'Belum ada rekaman! Klik "● Rec" dulu, gerakkan robot, lalu "Stop Rec".';
+        appendTerminalLog('err', msg);
+        showToast(msg);
+        return;
+      }
+      if (mqttWssStatusRef.current !== 'connected' || !actuatorArmed) {
+        dispatchRobotCommand(targetRoutine.steps[0].cmd, targetRoutine.steps[0].label, targetRoutine.steps[0].params);
+        return;
+      }
+
+      const runId = ++playbackRunIdRef.current;
+      isPlayingRef.current = true;
+      let iter = 0;
+
+      while (playbackRunIdRef.current === runId) {
+        iter++;
+        if (mqttWssStatusRef.current !== 'connected') {
+          appendTerminalLog('err', '[AUTO] EMQX WSS terputus — pemutaran dihentikan.');
+          break;
+        }
+        appendTerminalLog(
+          'sys',
+          `[▶ ${loopForever ? `AUTO LOOP #${iter}` : 'PUTAR 1x'}] Menjalankan ${targetRoutine.steps.length} langkah...`
+        );
+
+        for (let i = 0; i < targetRoutine.steps.length; i++) {
+          if (playbackRunIdRef.current !== runId || mqttWssStatusRef.current !== 'connected') break;
+          const step = targetRoutine.steps[i];
+          setPlaybackStatus({
+            mode: loopForever ? 'loop' : 'once',
+            loopIteration: iter,
+            activeStepIdx: i,
+            totalSteps: targetRoutine.steps.length,
+          });
+          if (step.cmd === 'CMD_TRIGGER_CAPTURE' || step.cmd === 'C') {
+            void handleTriggerEsp32CamCapture();
+          } else {
+            if (step.cmd === 'CMD_SET_SERVO' && step.params) {
+              setManualServoAngles((prev) => [
+                typeof step.params?.base === 'number' ? step.params.base : prev[0],
+                typeof step.params?.shoulder === 'number' ? step.params.shoulder : prev[1],
+                typeof step.params?.elbow === 'number' ? step.params.elbow : prev[2],
+                typeof step.params?.nozzle === 'number' ? step.params.nozzle : prev[3],
+              ]);
+            }
+            const okTx = dispatchRobotCommand(step.cmd, `[${i + 1}/${targetRoutine.steps.length}] ${step.label}`, step.params);
+            if (!okTx) {
+              playbackRunIdRef.current++;
+              break;
+            }
+          }
+          const okSleep = await sleepInterruptible(step.waitAfterMs, runId);
+          if (!okSleep) break;
+        }
+
+        if (playbackRunIdRef.current !== runId) break;
+
+        if (autoReturnRef.current) {
+          const returnActions = buildReturnToOriginCommands(targetRoutine, ignoreRailLimits);
+          if (returnActions.length > 0) {
+            setPlaybackStatus({
+              mode: 'returning',
+              loopIteration: iter,
+              activeStepIdx: -1,
+              totalSteps: targetRoutine.steps.length,
+            });
+            appendTerminalLog('sys', '[↩ KEMBALI SEMULA] Mengembalikan Arm & L298N ke titik awal...');
+            for (const act of returnActions) {
+              if (playbackRunIdRef.current !== runId) break;
+              if (act.cmd === 'CMD_SET_SERVO' && act.params) {
+                setManualServoAngles([
+                  Number(act.params.base ?? targetRoutine.initialServoAngles[0]),
+                  Number(act.params.shoulder ?? targetRoutine.initialServoAngles[1]),
+                  Number(act.params.elbow ?? targetRoutine.initialServoAngles[2]),
+                  Number(act.params.nozzle ?? targetRoutine.initialServoAngles[3]),
+                ]);
+              }
+              dispatchRobotCommand(act.cmd, act.label, act.params);
+              const okRet = await sleepInterruptible(act.waitMs, runId);
+              if (!okRet) break;
+            }
+          }
+        }
+
+        if (!loopForever || playbackRunIdRef.current !== runId) break;
+        const okCyclePause = await sleepInterruptible(600, runId);
+        if (!okCyclePause) break;
+      }
+
+      if (playbackRunIdRef.current === runId) {
+        isPlayingRef.current = false;
+        setPlaybackStatus({ mode: 'idle', loopIteration: 0, activeStepIdx: -1, totalSteps: 0 });
+        appendTerminalLog('sys', '[▶ SELESAI] Pemutaran rutinitas selesai.');
+      }
+    },
+    [
+      savedRoutine,
+      actuatorArmed,
+      ignoreRailLimits,
+      handleStopRecording,
+      handleTriggerEsp32CamCapture,
+      dispatchRobotCommand,
+      sleepInterruptible,
+      appendTerminalLog,
+      showToast,
+    ]
+  );
 
   // Execute command from Terminal Console (typing or quick command chip)
   const handleRunTerminalCommand = useCallback(
@@ -1344,8 +1680,32 @@ export const App: React.FC = () => {
         const srv = isLiveTelemetry && !isTelemetryStale && servoAngles ? `[${servoAngles.join(',')}]` : `[target ${manualServoAngles.join(',')}]`;
         appendTerminalLog(
           'rx',
-          `STATUS: WSS=${mqttWssStatus} | State=${systemState ?? 'STANDBY'} | Motor=${movementStatus} | Limit=(L:${limitLeft ? 'ACT' : 'CLR'},R:${limitRight ? 'ACT' : 'CLR'}) | Bypass=${ignoreRailLimits ? 'ON' : 'OFF'} | Servo=${srv} | Arm=${armManualMode === false ? 'AUTO' : 'MANUAL'} | Temp=${temp ?? '--'}°C Soil=${soilMoisture ?? '--'}%`
+          `STATUS: WSS=${mqttWssStatus} | State=${systemState ?? 'STANDBY'} | Motor=${movementStatus} | Limit=(L:${limitLeft ? 'ACT' : 'CLR'},R:${limitRight ? 'ACT' : 'CLR'}) | Bypass=${ignoreRailLimits ? 'ON' : 'OFF'} | Servo=${srv} | Rec=${isRecordingRoutine ? `ON(${recordingSteps.length})` : `${savedRoutine?.steps.length ?? 0} langkah`} | Loop=${playbackStatus.mode}`
         );
+        return;
+      }
+      if (parsed.type === 'rec_start') {
+        handleStartRecording();
+        return;
+      }
+      if (parsed.type === 'rec_stop') {
+        handleStopRecording();
+        return;
+      }
+      if (parsed.type === 'rec_clear') {
+        handleClearRoutine();
+        return;
+      }
+      if (parsed.type === 'play') {
+        void handleStartPlayback(parsed.loop);
+        return;
+      }
+      if (parsed.type === 'stop_playback') {
+        stopPlayback('[STOP] Auto-Loop dihentikan lewat terminal.');
+        return;
+      }
+      if (parsed.type === 'return_origin') {
+        void handleReturnToOriginNow();
         return;
       }
       if (parsed.type === 'set_limit_bypass') {
@@ -1358,6 +1718,7 @@ export const App: React.FC = () => {
       if (parsed.type === 'set_lock') {
         manualSafetyLockRef.current = parsed.locked;
         setActuatorArmed(!parsed.locked);
+        if (parsed.locked) stopPlayback();
         const msg = parsed.locked ? 'Kontrol dikunci (Read-Only).' : 'Kontrol dibuka (Ready).';
         appendTerminalLog('sys', msg);
         showToast(msg);
@@ -1389,10 +1750,17 @@ export const App: React.FC = () => {
       movementStatus,
       limitLeft,
       limitRight,
-      armManualMode,
-      temp,
-      soilMoisture,
+      isRecordingRoutine,
+      recordingSteps.length,
+      savedRoutine,
+      playbackStatus.mode,
       appendTerminalLog,
+      handleStartRecording,
+      handleStopRecording,
+      handleClearRoutine,
+      handleStartPlayback,
+      stopPlayback,
+      handleReturnToOriginNow,
       handleTriggerEsp32CamCapture,
       dispatchRobotCommand,
       showToast,
@@ -3971,6 +4339,143 @@ export const App: React.FC = () => {
                         <span>reset</span>
                       </button>
                     </div>
+
+                    {/* Teach & Repeat: Record, Auto-Loop & Kembali ke Semula Bar */}
+                    <div
+                      className="px-3.5 py-2 bg-[#0D1A16] border-b border-[#1E3B33] flex flex-wrap items-center gap-2"
+                      role="group"
+                      aria-label="Rekam dan Pemutaran Otomatis Berulang"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => (isRecordingRoutine ? handleStopRecording() : handleStartRecording())}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border flex items-center gap-1.5 cursor-pointer ${
+                          isRecordingRoutine
+                            ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse'
+                            : 'bg-[#162C26] hover:bg-rose-950/50 text-rose-300 border-rose-500/40'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${isRecordingRoutine ? 'bg-white' : 'bg-rose-500'}`} />
+                        <span>{isRecordingRoutine ? `Stop Rec (${recordingSteps.length})` : '● Rec Gerak'}</span>
+                      </button>
+
+                      {playbackStatus.mode === 'idle' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void handleStartPlayback(false)}
+                            disabled={!isRecordingRoutine && (!savedRoutine || savedRoutine.steps.length === 0)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-700/80 hover:bg-emerald-600 text-white border border-emerald-500/40 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Putar urutan rekaman 1 kali"
+                          >
+                            <Play size={11} />
+                            <span>Putar 1x</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleStartPlayback(true)}
+                            disabled={!isRecordingRoutine && (!savedRoutine || savedRoutine.steps.length === 0)}
+                            className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white border border-teal-400/50 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Ulangi otomatis pergerakan yang sama terus-menerus"
+                          >
+                            <Repeat size={11} />
+                            <span>Auto Loop ∞</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => stopPlayback('[STOP] Auto-Loop dihentikan operator.')}
+                          className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 text-[11px] font-mono font-bold flex items-center gap-1.5 cursor-pointer animate-pulse"
+                        >
+                          <Square size={11} />
+                          <span>
+                            Stop{' '}
+                            {playbackStatus.mode === 'returning'
+                              ? 'Kembali Semula...'
+                              : playbackStatus.mode === 'loop'
+                                ? `Loop #${playbackStatus.loopIteration} (${Math.max(1, playbackStatus.activeStepIdx + 1)}/${playbackStatus.totalSteps})`
+                                : `Putar (${Math.max(1, playbackStatus.activeStepIdx + 1)}/${playbackStatus.totalSteps})`}
+                          </span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleReturnToOriginNow()}
+                        className="px-2.5 py-1 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-sky-200 border border-[#284B41] text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
+                        title="Kembalikan Arm & L298N ke posisi semula sebelum rekaman"
+                      >
+                        <RotateCcw size={11} />
+                        <span>Kembali Semula</span>
+                      </button>
+
+                      <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#0B1714] border border-[#24433B] text-[10px] font-mono text-emerald-200 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoReturnToOrigin}
+                          onChange={(e) => setAutoReturnToOrigin(e.target.checked)}
+                          className="accent-emerald-400 cursor-pointer"
+                        />
+                        <span>Auto Kembali Semula</span>
+                      </label>
+
+                      {(recordingSteps.length > 0 || (savedRoutine && savedRoutine.steps.length > 0)) && (
+                        <button
+                          type="button"
+                          onClick={handleClearRoutine}
+                          className="px-2 py-1 rounded-lg bg-[#0B1714] hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 border border-[#24433B] text-[10px] font-mono flex items-center gap-1 cursor-pointer ml-auto"
+                          title="Hapus rekaman gerakan"
+                        >
+                          <Trash2 size={11} />
+                          <span>Hapus Rec</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Visual Compact Sequence of Recorded Movements */}
+                    {(isRecordingRoutine || (savedRoutine && savedRoutine.steps.length > 0)) && (
+                      <div className="px-3.5 py-1.5 bg-[#091310] border-b border-[#1A332C] flex flex-wrap items-center gap-1 text-[10px] font-mono">
+                        <span className="text-slate-400 mr-1">
+                          {isRecordingRoutine ? 'Merekam:' : `Tersimpan (${savedRoutine?.steps.length ?? 0} langkah):`}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-[#142822] text-sky-300 border border-[#24433B]">
+                          Awal [{(isRecordingRoutine ? recordingInitialAngles : savedRoutine!.initialServoAngles).join(',')}]
+                        </span>
+                        {(isRecordingRoutine ? recordingSteps : savedRoutine!.steps).map((st, idx) => {
+                          const isActive = !isRecordingRoutine && playbackStatus.activeStepIdx === idx;
+                          return (
+                            <React.Fragment key={st.id}>
+                              <span className="text-slate-600">→</span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded border ${
+                                  isActive
+                                    ? 'bg-emerald-500 text-white border-emerald-300 font-bold animate-pulse'
+                                    : 'bg-[#12221D] text-emerald-200 border-[#24433B]'
+                                }`}
+                              >
+                                {idx + 1}. {st.label}
+                              </span>
+                            </React.Fragment>
+                          );
+                        })}
+                        {autoReturnToOrigin && (
+                          <>
+                            <span className="text-slate-600">→</span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded border ${
+                                playbackStatus.mode === 'returning'
+                                  ? 'bg-sky-500 text-white border-sky-300 font-bold animate-pulse'
+                                  : 'bg-[#112420] text-sky-300 border-[#24433B]'
+                              }`}
+                            >
+                              ↩ Kembali Semula
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
 
                     {/* Scrolling Terminal Output */}
                     <div
