@@ -198,8 +198,10 @@ float aiConfidence = 0.0;
 float aiFireScore = 0.0;
 float aiSmokeScore = 0.0;
 float aiSafeScore = 1.0;
+uint32_t aiScanNumber = 0;
 unsigned long lastAiResultTime = 0;
 bool cameraOnline = false;
+volatile bool visionNewFramePending = false;
 
 // Slider Non-Blocking Tracking
 int currentZone = 1;
@@ -377,6 +379,12 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
     sliderTransitionActive = false;
     currentState = STATE_EMERGENCY_STOP;
     Serial.println("[EKSEKUSI] DARURAT: Semua aktuator dihentikan.");
+    return;
+  }
+
+  // 0c. Ambil Foto ESP32-CAM — Selalu diizinkan untuk pemantauan visual (bahkan saat E-STOP/Lockout)
+  if (strcmp(cmdName, "CMD_TRIGGER_CAPTURE") == 0 || strcmp(cmdName, "C") == 0) {
+    requestCameraCapture();
     return;
   }
 
@@ -708,7 +716,9 @@ void onEspNowDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingDa
       aiFireScore  = packet.fireScore;
       aiSmokeScore = packet.smokeScore;
       aiSafeScore  = packet.safeScore;
+      aiScanNumber = packet.scanNumber;
       lastAiResultTime = millis();
+      visionNewFramePending = true;
     }
   }
 }
@@ -1181,6 +1191,8 @@ void loop() {
         "\"uptime_seconds\":%lu,"
         "\"vision_prediction\":\"%s\","
         "\"vision_confidence\":%.2f,"
+        "\"vision_scan\":%lu,"
+        "\"image_ready\":%s,"
         "\"env_condition\":\"%s\","
         "\"action_command\":\"%s\","
         "\"command_label\":\"%s\","
@@ -1200,10 +1212,13 @@ void loop() {
         getSystemStateLabel(currentState),
         (unsigned long)(now / 1000UL),
         aiVisionClass, aiConfidence * 100.0f,
+        (unsigned long)aiScanNumber,
+        visionNewFramePending ? "true" : "false",
         envCondition, actionCommand, commandButtonLabel, commandPayload
       );
       if (written > 0 && written < (int)sizeof(jsonBuf)) {
         mqttClient.publish(TOPIC_TELEMETRY, jsonBuf);
+        visionNewFramePending = false;
       }
     }
   }

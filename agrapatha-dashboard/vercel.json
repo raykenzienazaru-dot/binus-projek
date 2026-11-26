@@ -7,6 +7,10 @@
     {
       "source": "/api/bmkg/nowcast/:path*",
       "destination": "https://www.bmkg.go.id/alerts/nowcast/:path*"
+    },
+    {
+      "source": "/api/vision/:path*",
+      "destination": "https://be-binus-production.up.railway.app/api/vision/:path*"
     }
   ]
 }

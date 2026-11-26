@@ -64,6 +64,8 @@ import {
   parseGatewayTelemetry,
   subscribeGatewayTelemetry,
   fetchLatestCameraFrame,
+  requestEsp32CamCapture,
+  pollEsp32CamCaptureStatus,
   checkGatewayHealth,
   type GatewayTelemetryPayload,
   type GatewayConnectionStatus,
@@ -257,8 +259,17 @@ export const App: React.FC = () => {
     isStale: boolean;
   } | null>(null);
   const [isFetchingGatewayFrame, setIsFetchingGatewayFrame] = useState<boolean>(false);
+  const [isTriggeringEsp32Cam, setIsTriggeringEsp32Cam] = useState<boolean>(false);
   const [gatewayFrameStatus, setGatewayFrameStatus] = useState<'idle' | 'standby' | 'ready' | 'error'>('idle');
   const isFetchingFrameRef = useRef(false);
+  const lastVisionScanRef = useRef<number | null>(null);
+  const cameraModeRef = useRef<{ cameraStatus: CameraStatus; captureSource: CaptureSource }>({
+    cameraStatus: 'idle',
+    captureSource: 'none',
+  });
+  useEffect(() => {
+    cameraModeRef.current = { cameraStatus, captureSource };
+  }, [cameraStatus, captureSource]);
 
   // Stable references to decouple effect lifecycle from reactive sensor updates
   const lastTelemetryTimestampRef = useRef<number | null>(null);
@@ -271,15 +282,21 @@ export const App: React.FC = () => {
     sensorValuesRef.current = { temp, rh, soilMoisture };
   });
 
-  // Fetch latest camera JPEG frame from backend cache (/api/vision/latest-frame.jpg)
+  // Fetch latest camera JPEG frame from Railway / Gateway cache (/api/vision/latest-frame.jpg)
   const handleFetchGatewayFrame = useCallback(async (manual = false) => {
-    if (isFetchingFrameRef.current) return;
+    if (isFetchingFrameRef.current) return false;
     isFetchingFrameRef.current = true;
     setIsFetchingGatewayFrame(true);
 
     try {
       const res = await fetchLatestCameraFrame();
       if (res.hasFrame && res.frame) {
+        // On background auto-refresh, don't hijack active local webcam or manually uploaded file
+        const { cameraStatus: curCam, captureSource: curSrc } = cameraModeRef.current;
+        if (!manual && (curCam === 'streaming' || curSrc === 'upload')) {
+          return false;
+        }
+
         const newUrl = URL.createObjectURL(res.frame.blob);
         setGatewayFrameMeta({
           byteLength: res.frame.byteLength,
@@ -290,7 +307,22 @@ export const App: React.FC = () => {
         setGatewayFrameStatus('ready');
         setLastCaptureTime(new Date(res.frame.receivedAt || Date.now()).toISOString());
 
-        // Make frame available for AI visual inference (previewUrl effect handles single-owner lifecycle)
+        if (res.frame.visionLabel) {
+          setEdgePrediction(res.frame.visionLabel);
+          if (typeof res.frame.visionConfidencePct === 'number') {
+            setEdgeConfidence(res.frame.visionConfidencePct / 100);
+          }
+        }
+
+        // Stop any running local webcam stream when explicitly requesting ESP32-CAM photo
+        if (manual && streamRef.current) {
+          stopMediaStream(streamRef.current);
+          streamRef.current = null;
+          if (videoRef.current) videoRef.current.srcObject = null;
+          setIsVideoReady(false);
+        }
+
+        // Make frame available for AI visual inference
         setCapturedBlob(res.frame.blob);
         setPreviewUrl(newUrl);
         setCaptureSource('gateway');
@@ -299,20 +331,26 @@ export const App: React.FC = () => {
         setInferenceError(null);
 
         if (manual) {
-          showToast(`Frame gateway berhasil dimuat (${(res.frame.byteLength / 1024).toFixed(1)} KB${res.frame.isStale ? ' · STALE' : ''})`);
+          const labelNote = res.frame.visionLabel
+            ? ` · AI: ${res.frame.visionLabel}${typeof res.frame.visionConfidencePct === 'number' ? ` (${res.frame.visionConfidencePct.toFixed(0)}%)` : ''}`
+            : '';
+          showToast(`Foto ESP32-CAM dimuat (${(res.frame.byteLength / 1024).toFixed(1)} KB${res.frame.isStale ? ' · STALE' : ''}${labelNote})`);
         }
+        return true;
       } else {
         setGatewayFrameStatus('standby');
         if (manual) {
-          showToast('Belum ada frame kamera di cache gateway (HTTP 204 Standby). Menunggu transmisi ESP32-CAM.');
+          showToast('Belum ada foto dari ESP32-CAM di server Railway (HTTP 204). Pastikan ESP32-CAM terhubung Wi-Fi.');
         }
+        return false;
       }
     } catch (err: unknown) {
       setGatewayFrameStatus('error');
       if (manual) {
-        const msg = err instanceof Error ? err.message : 'Gagal mengambil frame dari gateway';
+        const msg = err instanceof Error ? err.message : 'Gagal mengambil foto ESP32-CAM';
         showToast(msg);
       }
+      return false;
     } finally {
       isFetchingFrameRef.current = false;
       setIsFetchingGatewayFrame(false);
@@ -335,6 +373,7 @@ export const App: React.FC = () => {
     setFlameRaw(null);
     setEdgePrediction(null);
     setEdgeConfidence(null);
+    lastVisionScanRef.current = null;
     setZone(null);
     setPumpStatus(null);
     setPumpLockout(null);
@@ -463,7 +502,12 @@ export const App: React.FC = () => {
       setEdgeConfidence(payload.visionConfidence);
     }
 
-    if (payload.imageReady === true) {
+    const isNewScan =
+      typeof payload.visionScan === 'number' && payload.visionScan !== lastVisionScanRef.current;
+    if (typeof payload.visionScan === 'number') {
+      lastVisionScanRef.current = payload.visionScan;
+    }
+    if (payload.imageReady === true || isNewScan) {
       fetchGatewayFrameRef.current(false);
     }
   }, []);
@@ -523,12 +567,29 @@ export const App: React.FC = () => {
             showToast(`Terhubung ke EMQX WSS (${cleanHost}:${emqxWssDefaults.port})`);
           }
         },
-        onMessage: (_topic, payloadStr) => {
+        onMessage: (topic, payloadStr) => {
           try {
             const parsedRaw = JSON.parse(payloadStr);
             if (parsedRaw && typeof parsedRaw === 'object') {
+              const rec = parsedRaw as Record<string, unknown>;
+              if (topic === 'grenvis/vision/data') {
+                const pred = typeof rec.vision_prediction === 'string'
+                  ? rec.vision_prediction
+                  : typeof rec.visionPrediction === 'string'
+                    ? rec.visionPrediction
+                    : null;
+                const conf = typeof rec.vision_confidence === 'number'
+                  ? rec.vision_confidence
+                  : typeof rec.visionConfidence === 'number'
+                    ? rec.visionConfidence
+                    : null;
+                if (pred) setEdgePrediction(pred);
+                if (conf !== null) setEdgeConfidence(conf);
+                fetchGatewayFrameRef.current(false);
+                return;
+              }
               const normalized = parseGatewayTelemetry({
-                ...(parsedRaw as Record<string, unknown>),
+                ...rec,
                 freshness: 'FRESH',
                 timestamp: Date.now(),
               });
@@ -1021,13 +1082,14 @@ export const App: React.FC = () => {
   const dispatchRobotCommand = useCallback(
     (cmdName: string, humanLabel?: string, params?: Record<string, unknown>) => {
       const isEmergencyStop = cmdName === 'CMD_EMERGENCY_STOP';
+      const isCameraCapture = cmdName === 'CMD_TRIGGER_CAPTURE' || cmdName === 'C';
       if (mqttWssStatus !== 'connected' || !mqttWssRef.current) {
         showToast(
           `Gagal kirim ${cmdName}: Hubungkan EMQX WSS (Port 8084) di panel Kontrol Robot terlebih dahulu (Fail-Closed).`
         );
         return false;
       }
-      if (!actuatorArmed && !isEmergencyStop) {
+      if (!actuatorArmed && !isEmergencyStop && !isCameraCapture) {
         showToast(
           `Interlock Safety Aktif: Aktifkan toggle "ARM AKTUATOR" untuk mengirim perintah ${cmdName}.`
         );
@@ -1041,7 +1103,7 @@ export const App: React.FC = () => {
         if (cmdName === 'CMD_SLIDER_LEFT' || cmdName === 'L') setMovementStatus('left_command_sent');
         else if (cmdName === 'CMD_SLIDER_RIGHT' || cmdName === 'R') setMovementStatus('right_command_sent');
         else if (cmdName === 'CMD_SLIDER_STOP' || cmdName === 'S' || isEmergencyStop) setMovementStatus('stop_command_sent');
-        else if (cmdName === 'CMD_TRIGGER_CAPTURE' || cmdName === 'C') setMovementStatus('capture_command_sent');
+        else if (isCameraCapture) setMovementStatus('capture_command_sent');
         showToast(`Perintah Terkirim: ${humanLabel || cmdName}`);
         return true;
       }
@@ -1050,6 +1112,64 @@ export const App: React.FC = () => {
     },
     [mqttWssStatus, actuatorArmed, showToast]
   );
+
+  // Trigger fresh photo capture on ESP32-CAM directly from dashboard (Permitted without ARM AKTUATOR)
+  const handleTriggerEsp32CamCapture = useCallback(async () => {
+    if (isTriggeringEsp32Cam) return;
+    setIsTriggeringEsp32Cam(true);
+    setInferenceError(null);
+
+    if (streamRef.current) {
+      stopMediaStream(streamRef.current);
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+      setIsVideoReady(false);
+    }
+
+    const triggerStartMs = Date.now();
+    let mqttSent = false;
+    if (mqttWssStatus === 'connected' && mqttWssRef.current) {
+      mqttSent = mqttWssRef.current.publish(
+        'agrapatha/commands',
+        JSON.stringify({ cmd: 'CMD_TRIGGER_CAPTURE', params: { source: 'dashboard' } })
+      );
+      if (mqttSent) {
+        setLastCommand('CMD_TRIGGER_CAPTURE');
+        setMovementStatus('capture_command_sent');
+      }
+    }
+
+    const reqRes = await requestEsp32CamCapture();
+    showToast(
+      mqttSent
+        ? 'Meminta ESP32-CAM memotret via MQTT + Railway...'
+        : 'Meminta ESP32-CAM memotret via Railway be-binus...'
+    );
+
+    try {
+      let receivedFresh = false;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 650));
+        const status = await pollEsp32CamCaptureStatus();
+        if (
+          status &&
+          status.hasFrame &&
+          ((reqRes && status.fulfilledSeq >= reqRes.seq) ||
+            (status.frameTimestamp !== null && status.frameTimestamp >= triggerStartMs - 1500))
+        ) {
+          receivedFresh = true;
+          break;
+        }
+      }
+
+      const loaded = await handleFetchGatewayFrame(true);
+      if (!loaded && !receivedFresh) {
+        showToast('Permintaan foto dikirim. Pastikan ESP32-CAM menyala & terhubung Wi-Fi untuk melihat hasil foto.');
+      }
+    } finally {
+      setIsTriggeringEsp32Cam(false);
+    }
+  }, [isTriggeringEsp32Cam, mqttWssStatus, handleFetchGatewayFrame, showToast]);
 
   // Legacy short-char wrapper mapped cleanly to Robot Arm & Slider command dispatcher
   const handleRailCommand = (cmd: 'L' | 'R' | 'S' | 'C') => {
@@ -2861,13 +2981,24 @@ export const App: React.FC = () => {
 
                         <button
                           type="button"
+                          onClick={handleTriggerEsp32CamCapture}
+                          disabled={isTriggeringEsp32Cam}
+                          className="text-xs font-bold px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-700 hover:to-cyan-700 text-white flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-60"
+                          title="Minta ESP32-CAM mengambil foto terbaru & tampilkan di dashboard (selalu diizinkan)"
+                        >
+                          <Camera size={14} className={isTriggeringEsp32Cam ? 'animate-spin' : ''} />
+                          <span>{isTriggeringEsp32Cam ? 'Memotret ESP32-CAM...' : 'Ambil Foto ESP32-CAM'}</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleFetchGatewayFrame(true)}
                           disabled={isFetchingGatewayFrame}
                           className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white hover:bg-sky-50 text-[#102A24] border border-[#CFE2D9] flex items-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
-                          title="Ambil frame JPEG terbaru dari cache gateway (/api/vision/latest-frame.jpg)"
+                          title="Muat ulang foto terakhir ESP32-CAM yang tersimpan di server"
                         >
                           <Camera size={14} className="text-emerald-600" />
-                          <span>{isFetchingGatewayFrame ? 'Memuat Gateway...' : 'Frame ESP32-CAM'}</span>
+                          <span>{isFetchingGatewayFrame ? 'Memuat Foto...' : 'Muat Foto Terakhir'}</span>
                         </button>
                       </>
                     )}
@@ -3004,12 +3135,21 @@ export const App: React.FC = () => {
                             </button>
                             <button
                               type="button"
+                              onClick={handleTriggerEsp32CamCapture}
+                              disabled={isTriggeringEsp32Cam}
+                              className="text-xs font-bold px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white border border-sky-300/40 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-60"
+                            >
+                              <Camera size={14} className={isTriggeringEsp32Cam ? 'animate-spin' : ''} />
+                              <span>{isTriggeringEsp32Cam ? 'Memotret...' : 'Ambil Foto ESP32-CAM'}</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleFetchGatewayFrame(true)}
                               disabled={isFetchingGatewayFrame}
                               className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/25 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                             >
                               <Camera size={14} />
-                              <span>Frame Gateway</span>
+                              <span>Muat Foto Terakhir</span>
                             </button>
                             <label className="text-xs font-semibold px-3.5 py-2 rounded-xl bg-amber-300 hover:bg-amber-200 text-[#0D2E27] flex items-center gap-1.5 transition-all cursor-pointer shadow-sm">
                               <Upload size={14} />
@@ -3653,12 +3793,13 @@ export const App: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleRailCommand('C')}
-                      disabled={mqttWssStatus !== 'connected' || !actuatorArmed}
+                      onClick={handleTriggerEsp32CamCapture}
+                      disabled={isTriggeringEsp32Cam}
                       className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#0F766E] hover:bg-[#0D5D57] text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Ambil foto dari ESP32-CAM lewat dashboard (tidak memerlukan ARM AKTUATOR)"
                     >
-                      <Camera size={14} />
-                      <span>Foto CAM (C)</span>
+                      <Camera size={14} className={isTriggeringEsp32Cam ? 'animate-spin' : ''} />
+                      <span>{isTriggeringEsp32Cam ? 'Memotret CAM...' : 'Foto ESP32-CAM (C)'}</span>
                     </button>
 
                     <button

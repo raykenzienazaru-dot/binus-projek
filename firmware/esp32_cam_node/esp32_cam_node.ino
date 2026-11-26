@@ -289,12 +289,15 @@ bool queryCloudAiVision(const uint8_t *jpegBuf, size_t jpegLen, CameraAiPacket *
   const String tail = "\r\n--" + boundary + "--\r\n";
   const size_t totalLen = head.length() + jpegLen + tail.length();
 
+  const String reqPath = String(AI_PATH) + "?source=esp32cam&scan=" + String(outResult->scanNumber);
+
   // Kirim Header HTTP POST
-  client.println("POST " + String(AI_PATH) + " HTTP/1.1");
+  client.println("POST " + reqPath + " HTTP/1.1");
   client.println("Host: " + String(AI_HOST));
   client.println("Content-Type: multipart/form-data; boundary=" + boundary);
   client.println("Content-Length: " + String(totalLen));
-  client.println("User-Agent: ESP32-CAM-AI-ARM/2.1");
+  client.println("User-Agent: ESP32-CAM-AI-ARM/2.2");
+  client.println("X-Camera-Device: esp32cam");
   client.println("Accept: application/json");
   client.println("Connection: close");
   client.println();
@@ -400,9 +403,13 @@ bool queryCloudAiVision(const uint8_t *jpegBuf, size_t jpegLen, CameraAiPacket *
   outResult->safeScore  = doc["scores"]["SAFE"]  | doc["scores"]["Non-Fire"] | doc["data"]["scores"]["Non-Fire"] | 0.0f;
   outResult->timestampMs = millis();
 
-  Serial.printf("[AI-CLOUD HASIL] Kelas: %s (%.1f%%) | Fire: %.2f | Smoke: %.2f | Safe: %.2f\n",
+  if (doc["capture_requested"] == true) {
+    captureRequested = true;
+  }
+
+  Serial.printf("[AI-CLOUD HASIL] Kelas: %s (%.1f%%) | Cache Foto Dashboard: %s\n",
                 outResult->visionClass, outResult->confidence * 100.0,
-                outResult->fireScore, outResult->smokeScore, outResult->safeScore);
+                (doc["frame_cached"] == true) ? "TERSIMPAN" : "TIDAK");
   return true;
 }
 
@@ -482,12 +489,22 @@ void loop() {
 
   unsigned long now = millis();
 
-  // Eksekusi inferensi otomatis berkala atau sesuai permintaan trigger arm
+  // Eksekusi inferensi otomatis berkala atau sesuai permintaan foto dari Dashboard / ESP32 Main
   if ((now - lastInferenceTime >= AUTO_INFERENCE_INTERVAL_MS) || captureRequested) {
+    bool isManualReq = captureRequested;
     lastInferenceTime = now;
     captureRequested = false;
 
     if (!cameraHardwareReady) return;
+
+    // Saat foto diminta manual, buang 1 frame lama di PSRAM buffer agar frame benar-benar terkini
+    if (isManualReq && psramFound()) {
+      camera_fb_t *staleFb = esp_camera_fb_get();
+      if (staleFb) {
+        esp_camera_fb_return(staleFb);
+        delay(30);
+      }
+    }
 
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
@@ -499,7 +516,7 @@ void loop() {
     packet.packetType = PACKET_VISION_RESULT;
     packet.scanNumber = ++scanCounter;
 
-    // 1. Query Inferensi ke Railway API (be-binus-production.up.railway.app)
+    // 1. Query Inferensi + Simpan Frame JPEG Terbaru ke Railway API (be-binus-production.up.railway.app)
     bool success = queryCloudAiVision(fb->buf, fb->len, &packet);
     if (!success) {
       // Fallback aman jika Railway offline / timeout (fail-safe: jangan klaim SAFE palsu)

@@ -21,6 +21,7 @@ export interface PublicTelemetryPayload {
   uptimeSeconds: number | null;
   visionPrediction: string | null;
   visionConfidence: number | null;
+  visionScan?: number | null;
   imageReady: boolean | null;
   freshness: 'FRESH' | 'STALE';
   timestamp: number;
@@ -194,6 +195,9 @@ export function sanitizeTelemetry(raw: unknown, nowMs: number, lastReceivedMs: n
 
   const armManualMode = getBool('armManualMode') ?? getBool('arm_manual_mode');
   if (armManualMode !== null) payload.armManualMode = armManualMode;
+
+  const visionScan = getNum('visionScan') ?? getNum('vision_scan');
+  if (visionScan !== null) payload.visionScan = Math.round(visionScan);
 
   const rawServoAngles = data.servoAngles ?? data.servo_angles;
   if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {

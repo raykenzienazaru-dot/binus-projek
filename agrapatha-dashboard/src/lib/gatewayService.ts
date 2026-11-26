@@ -6,6 +6,8 @@
  * - GET /health (Gateway & MQTT connection health check)
  */
 
+import { getIotConfig } from '../config/iotConfig.ts';
+
 export interface GatewayTelemetryPayload {
   temp: number | null;
   rh: number | null;
@@ -27,6 +29,7 @@ export interface GatewayTelemetryPayload {
   uptimeSeconds: number | null;
   visionPrediction: string | null;
   visionConfidence: number | null;
+  visionScan?: number | null;
   imageReady: boolean | null;
   freshness: 'FRESH' | 'STALE';
   timestamp: number;
@@ -65,6 +68,24 @@ export interface CameraFrameMetadata {
   receivedAt: number | null;
   ageSeconds: number | null;
   isStale: boolean;
+  visionLabel?: string | null;
+  visionConfidencePct?: number | null;
+  scanNumber?: number | null;
+}
+
+export interface Esp32CamCaptureRequestResult {
+  ok: boolean;
+  seq: number;
+  requestedAtMs: number;
+}
+
+export interface Esp32CamCaptureStatus {
+  pending: boolean;
+  seq: number;
+  fulfilledSeq: number;
+  hasFrame: boolean;
+  frameTimestamp: number | null;
+  scanNumber: number | null;
 }
 
 export interface CameraFrameResult {
@@ -218,6 +239,9 @@ export function parseGatewayTelemetry(data: unknown): GatewayTelemetryPayload | 
   const armManualMode = getBoolOrNull('armManualMode') ?? getBoolOrNull('arm_manual_mode');
   if (armManualMode !== null) result.armManualMode = armManualMode;
 
+  const visionScan = getNumOrNull('visionScan') ?? getNumOrNull('vision_scan');
+  if (visionScan !== null) result.visionScan = Math.round(visionScan);
+
   const rawServoAngles = rec.servoAngles ?? rec.servo_angles;
   if (Array.isArray(rawServoAngles) && rawServoAngles.every((v) => typeof v === 'number' && Number.isFinite(v))) {
     result.servoAngles = rawServoAngles.slice(0, 4);
@@ -296,30 +320,57 @@ export function subscribeGatewayTelemetry(options: TelemetrySubscriptionOptions)
 }
 
 /**
- * Requests the latest camera JPEG frame from the backend cache (/api/vision/latest-frame.jpg).
+ * Requests the latest camera JPEG frame from `/api/vision/latest-frame.jpg`
+ * (with automatic fallback to the Railway backend cache when relative gateway is unavailable).
  * Handles HTTP 200 (Blob and frame metadata) and HTTP 204 (No content / no frame yet).
  */
 export async function fetchLatestCameraFrame(
   options: FetchFrameOptions = {}
 ): Promise<CameraFrameResult> {
   const { baseUrl = '', signal, fetchFn = globalThis.fetch } = options;
+  const allowRailwayFallback = options.baseUrl === undefined && options.fetchFn === undefined;
   const endpoint = `${baseUrl}/api/vision/latest-frame.jpg`;
 
-  let res: Response;
-  try {
-    res = await fetchFn(endpoint, {
+  const tryFetch = async (targetUrl: string): Promise<Response> => {
+    return fetchFn(targetUrl, {
       method: 'GET',
       signal,
+      cache: allowRailwayFallback ? 'no-store' : undefined,
       headers: {
         Accept: 'image/jpeg',
       },
     });
+  };
+
+  let res: Response;
+  try {
+    res = await tryFetch(endpoint);
+    if (allowRailwayFallback) {
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('text/html') || res.status === 404 || res.status >= 500) {
+        const railwayBase = getIotConfig().railway.wildfireUrl.replace(/\/+$/, '');
+        res = await tryFetch(`${railwayBase}/api/vision/latest-frame.jpg`);
+      }
+    }
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw err;
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Network failure fetching camera frame: ${msg}`);
+    if (allowRailwayFallback) {
+      try {
+        const railwayBase = getIotConfig().railway.wildfireUrl.replace(/\/+$/, '');
+        res = await tryFetch(`${railwayBase}/api/vision/latest-frame.jpg`);
+      } catch (fallbackErr: unknown) {
+        if (fallbackErr instanceof Error && fallbackErr.name === 'AbortError') {
+          throw fallbackErr;
+        }
+        const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        throw new Error(`Network failure fetching camera frame: ${msg}`);
+      }
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Network failure fetching camera frame: ${msg}`);
+    }
   }
 
   if (res.status === 204) {
@@ -333,14 +384,27 @@ export async function fetchLatestCameraFrame(
     throw new GatewayHttpError(res.status, 'Failed to fetch camera frame');
   }
 
+  const resCt = (res.headers.get('content-type') || '').toLowerCase();
+  if (resCt.includes('text/html')) {
+    return {
+      hasFrame: false,
+      frame: null,
+    };
+  }
+
   const blob = await res.blob();
   const rawTimestamp = res.headers.get('X-Frame-Timestamp');
   const rawAge = res.headers.get('X-Frame-Age-Seconds');
   const rawStale = res.headers.get('X-Frame-Stale');
+  const rawVisionLabel = res.headers.get('X-Vision-Label');
+  const rawVisionConf = res.headers.get('X-Vision-Confidence');
+  const rawScan = res.headers.get('X-Scan-Number');
 
   const receivedAt = rawTimestamp ? Number(rawTimestamp) : null;
   const ageSeconds = rawAge ? Number(rawAge) : null;
   const isStale = rawStale === '1';
+  const visionConf = rawVisionConf ? Number(rawVisionConf) : null;
+  const scanNum = rawScan ? Number(rawScan) : null;
 
   return {
     hasFrame: true,
@@ -350,8 +414,80 @@ export async function fetchLatestCameraFrame(
       receivedAt: Number.isFinite(receivedAt) ? receivedAt : null,
       ageSeconds: Number.isFinite(ageSeconds) ? ageSeconds : null,
       isStale,
+      ...(rawVisionLabel ? { visionLabel: rawVisionLabel } : {}),
+      ...(visionConf !== null && Number.isFinite(visionConf) ? { visionConfidencePct: visionConf } : {}),
+      ...(scanNum !== null && Number.isFinite(scanNum) ? { scanNumber: scanNum } : {}),
     },
   };
+}
+
+/**
+ * Queues a remote capture request for ESP32-CAM on `/api/vision/capture-request`
+ * (falling back directly to Railway `be-binus` when relative proxy isn't active).
+ */
+export async function requestEsp32CamCapture(
+  signal?: AbortSignal
+): Promise<Esp32CamCaptureRequestResult | null> {
+  const railwayBase = getIotConfig().railway.wildfireUrl.replace(/\/+$/, '');
+  const candidates = ['/api/vision/capture-request', `${railwayBase}/api/vision/capture-request`];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (!ct.includes('application/json')) continue;
+      const data = (await res.json()) as Record<string, unknown>;
+      if (data && data.ok === true && typeof data.seq === 'number') {
+        return {
+          ok: true,
+          seq: data.seq,
+          requestedAtMs: typeof data.requested_at_ms === 'number' ? data.requested_at_ms : Date.now(),
+        };
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks whether ESP32-CAM has fulfilled a queued capture request.
+ */
+export async function pollEsp32CamCaptureStatus(
+  signal?: AbortSignal
+): Promise<Esp32CamCaptureStatus | null> {
+  const railwayBase = getIotConfig().railway.wildfireUrl.replace(/\/+$/, '');
+  const candidates = ['/api/vision/capture-status', `${railwayBase}/api/vision/capture-status`];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        signal,
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (!ct.includes('application/json')) continue;
+      const data = (await res.json()) as Record<string, unknown>;
+      return {
+        pending: Boolean(data.pending),
+        seq: typeof data.seq === 'number' ? data.seq : 0,
+        fulfilledSeq: typeof data.fulfilled_seq === 'number' ? data.fulfilled_seq : 0,
+        hasFrame: Boolean(data.has_frame),
+        frameTimestamp: typeof data.frame_timestamp === 'number' ? data.frame_timestamp : null,
+        scanNumber: typeof data.scan_number === 'number' ? data.scan_number : null,
+      };
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
+    }
+  }
+  return null;
 }
 
 /**

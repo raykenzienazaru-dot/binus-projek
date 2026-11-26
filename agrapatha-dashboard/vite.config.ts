@@ -23,6 +23,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (reqPath) => reqPath.replace(/^\/api\/bmkg\/nowcast/, '/alerts/nowcast'),
       },
+      '/api/vision': {
+        target: 'https://be-binus-production.up.railway.app',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,

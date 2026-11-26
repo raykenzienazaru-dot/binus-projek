@@ -172,7 +172,7 @@ export function getEmqxWssConfig(): EmqxWssConfig {
     port: Number(env.VITE_MQTT_WS_PORT) || 8084,
     username: (env.VITE_MQTT_USERNAME || 'agrapatha').trim(),
     password: env.VITE_MQTT_PASSWORD || 'agrapatha123',
-    telemetryTopics: ['agrapatha/telemetry', 'grenvis/sensor/data'],
+    telemetryTopics: ['agrapatha/telemetry', 'grenvis/sensor/data', 'grenvis/vision/data'],
   };
 }
 

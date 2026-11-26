@@ -512,6 +512,29 @@ describe('Gateway Service Client Tests', () => {
         }
       );
     });
+
+    test('parses X-Vision-Label, X-Vision-Confidence, and X-Scan-Number headers when provided by Railway cache', async () => {
+      const mockBlob = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+      const mockFetch: typeof fetch = async () =>
+        new Response(mockBlob, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/jpeg',
+            'X-Frame-Timestamp': '1700000100000',
+            'X-Frame-Age-Seconds': '1',
+            'X-Frame-Stale': '0',
+            'X-Vision-Label': 'Fire',
+            'X-Vision-Confidence': '93.5',
+            'X-Scan-Number': '14',
+          },
+        });
+
+      const result = await fetchLatestCameraFrame({ fetchFn: mockFetch });
+      assert.equal(result.hasFrame, true);
+      assert.equal(result.frame?.visionLabel, 'Fire');
+      assert.equal(result.frame?.visionConfidencePct, 93.5);
+      assert.equal(result.frame?.scanNumber, 14);
+    });
   });
 
   // --------------------------------------------------------------------------
