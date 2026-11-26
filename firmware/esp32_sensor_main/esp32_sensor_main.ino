@@ -601,6 +601,144 @@ void executeDashboardCommand(const char* cmdName, JsonObject& params) {
   }
 }
 
+void executeTerminalTextCommand(const char* rawLine) {
+  if (!rawLine) return;
+  while (*rawLine == ' ' || *rawLine == '\t') rawLine++;
+  if (strlen(rawLine) == 0) return;
+
+  StaticJsonDocument<256> doc;
+  if (rawLine[0] == '{') {
+    DeserializationError err = deserializeJson(doc, rawLine);
+    if (!err) {
+      const char* cmd = doc["cmd"] | doc["command"] | doc["action"] | "";
+      JsonObject params = doc["params"].as<JsonObject>();
+      if (strlen(cmd) > 0) executeDashboardCommand(cmd, params);
+    }
+    return;
+  }
+
+  JsonObject p = doc.to<JsonObject>();
+  char tok1[32] = "";
+  char tok2[32] = "";
+  char tok3[32] = "";
+  int b = 0, s = 0, e = 0, n = 0;
+  int deg = 0;
+  unsigned long dur = 3000;
+
+  if (strcasecmp(rawLine, "help") == 0 || strcmp(rawLine, "?") == 0) {
+    Serial.println("[TERMINAL HELP] L [ms] [bypass] | R [ms] [bypass] | S | C | 1..4 <deg> | servo b s e n | home | manual | auto | pump on [ms] | pump off | estop | reset");
+    return;
+  }
+  if (strcasecmp(rawLine, "estop") == 0 || strcasecmp(rawLine, "emergency") == 0) {
+    executeDashboardCommand("CMD_EMERGENCY_STOP", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "reset") == 0) {
+    executeDashboardCommand("CMD_RESET_EMERGENCY", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "home") == 0 || strcasecmp(rawLine, "netral") == 0) {
+    executeDashboardCommand("CMD_ARM_HOME", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "park") == 0) {
+    executeDashboardCommand("CMD_PARK_SAFE_ZONE", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "retract") == 0) {
+    executeDashboardCommand("CMD_RETRACT_ARM", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "manual") == 0) {
+    p["manual"] = true;
+    executeDashboardCommand("CMD_SET_ARM_MODE", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "auto") == 0 || strcasecmp(rawLine, "scan") == 0) {
+    p["manual"] = false;
+    executeDashboardCommand("CMD_SET_ARM_MODE", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "c") == 0 || strcasecmp(rawLine, "cam") == 0 || strcasecmp(rawLine, "foto") == 0) {
+    executeDashboardCommand("CMD_TRIGGER_CAPTURE", p);
+    return;
+  }
+  if (strcasecmp(rawLine, "s") == 0 || strcasecmp(rawLine, "stop") == 0) {
+    executeDashboardCommand("CMD_SLIDER_STOP", p);
+    return;
+  }
+  if (sscanf(rawLine, "servo %d %d %d %d", &b, &s, &e, &n) == 4 ||
+      sscanf(rawLine, "arm %d %d %d %d", &b, &s, &e, &n) == 4 ||
+      sscanf(rawLine, "%d %d %d %d", &b, &s, &e, &n) == 4) {
+    p["base"] = constrain(b, 0, 180);
+    p["shoulder"] = constrain(s, 0, 180);
+    p["elbow"] = constrain(e, 0, 180);
+    p["nozzle"] = constrain(n, 0, 180);
+    executeDashboardCommand("CMD_SET_SERVO", p);
+    return;
+  }
+
+  int nTok = sscanf(rawLine, "%31s %31s %31s", tok1, tok2, tok3);
+  if (nTok >= 1) {
+    if (strcasecmp(tok1, "l") == 0 || strcasecmp(tok1, "left") == 0 || strcasecmp(tok1, "kiri") == 0 ||
+        strcasecmp(tok1, "r") == 0 || strcasecmp(tok1, "right") == 0 || strcasecmp(tok1, "kanan") == 0) {
+      bool isLeft = (strcasecmp(tok1, "l") == 0 || strcasecmp(tok1, "left") == 0 || strcasecmp(tok1, "kiri") == 0);
+      if (nTok >= 2 && isdigit((unsigned char)tok2[0])) dur = (unsigned long)atol(tok2);
+      if ((nTok >= 2 && (strcasecmp(tok2, "bypass") == 0 || strcasecmp(tok2, "force") == 0)) ||
+          (nTok >= 3 && (strcasecmp(tok3, "bypass") == 0 || strcasecmp(tok3, "force") == 0))) {
+        p["ignore_limit"] = true;
+      }
+      p["duration"] = dur;
+      executeDashboardCommand(isLeft ? "CMD_SLIDER_LEFT" : "CMD_SLIDER_RIGHT", p);
+      return;
+    }
+    if (strcasecmp(tok1, "pump") == 0 || strcasecmp(tok1, "pompa") == 0) {
+      if (nTok >= 2 && (strcasecmp(tok2, "off") == 0 || strcasecmp(tok2, "stop") == 0)) {
+        executeDashboardCommand("CMD_STOP_PUMP", p);
+      } else {
+        if (nTok >= 3 && isdigit((unsigned char)tok3[0])) p["duration"] = (unsigned long)atol(tok3);
+        else if (nTok >= 2 && isdigit((unsigned char)tok2[0])) p["duration"] = (unsigned long)atol(tok2);
+        executeDashboardCommand("CMD_START_IRRIGATION", p);
+      }
+      return;
+    }
+    if (nTok >= 2 && sscanf(tok2, "%d", &deg) == 1) {
+      deg = constrain(deg, 0, 180);
+      if (strcmp(tok1, "1") == 0 || strcasecmp(tok1, "j1") == 0 || strcasecmp(tok1, "base") == 0) {
+        p["base"] = deg; executeDashboardCommand("CMD_SET_SERVO", p); return;
+      }
+      if (strcmp(tok1, "2") == 0 || strcasecmp(tok1, "j2") == 0 || strcasecmp(tok1, "sh") == 0 || strcasecmp(tok1, "shoulder") == 0) {
+        p["shoulder"] = deg; executeDashboardCommand("CMD_SET_SERVO", p); return;
+      }
+      if (strcmp(tok1, "3") == 0 || strcasecmp(tok1, "j3") == 0 || strcasecmp(tok1, "el") == 0 || strcasecmp(tok1, "elbow") == 0) {
+        p["elbow"] = deg; executeDashboardCommand("CMD_SET_SERVO", p); return;
+      }
+      if (strcmp(tok1, "4") == 0 || strcasecmp(tok1, "j4") == 0 || strcasecmp(tok1, "noz") == 0 || strcasecmp(tok1, "nozzle") == 0) {
+        p["nozzle"] = deg; executeDashboardCommand("CMD_SET_SERVO", p); return;
+      }
+    }
+  }
+  Serial.printf("[TERMINAL] Perintah tidak dikenal: '%s' (ketik 'help').\n", rawLine);
+}
+
+void pollSerialTerminal() {
+  static char serialBuf[160];
+  static size_t serialLen = 0;
+  while (Serial.available() > 0) {
+    char ch = (char)Serial.read();
+    if (ch == '\r' || ch == '\n') {
+      if (serialLen > 0) {
+        serialBuf[serialLen] = '\0';
+        Serial.printf("> %s\n", serialBuf);
+        executeTerminalTextCommand(serialBuf);
+        serialLen = 0;
+      }
+    } else if (serialLen < sizeof(serialBuf) - 1) {
+      serialBuf[serialLen++] = ch;
+    }
+  }
+}
+
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   char msgBuf[384];
   if (length >= sizeof(msgBuf)) length = sizeof(msgBuf) - 1;
@@ -617,13 +755,7 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
       executeDashboardCommand(cmd, params);
     }
   } else {
-    // Fallback untuk perintah teks mentah tunggal L/R/S/C
-    if (length == 1) {
-      char single[2] = { (char)payload[0], '\0' };
-      StaticJsonDocument<64> emptyDoc;
-      JsonObject emptyParams = emptyDoc.as<JsonObject>();
-      executeDashboardCommand(single, emptyParams);
-    }
+    executeTerminalTextCommand(msgBuf);
   }
 }
 
@@ -1028,6 +1160,7 @@ void loop() {
   unsigned long now = millis();
 
   ensureWiFiConnected();
+  pollSerialTerminal();
 
   // 1. Layani MQTT loop sesering mungkin agar E-STOP responsif instan
   if (mqttClient.connected()) {

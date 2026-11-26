@@ -20,7 +20,6 @@ import {
   ChevronDown,
   ChevronRight,
   CloudRain,
-  Crosshair,
   Droplet,
   Flame,
   Info,
@@ -32,6 +31,7 @@ import {
   Sliders,
   Sparkles,
   Square,
+  Terminal,
   Upload,
   Video,
   VideoOff,
@@ -78,6 +78,10 @@ import {
   getSensorStatusLabel,
   getDeviceConnectivityStatus,
 } from './lib/sensorDisplay';
+import {
+  TERMINAL_HELP_LINES,
+  parseRobotTerminalCommand,
+} from './lib/robotTerminal';
 
 const SECTION_IDS = [
   'overview',
@@ -212,8 +216,27 @@ export const App: React.FC = () => {
   const [mqttWssStatus, setMqttWssStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [mqttWssError, setMqttWssError] = useState<string | null>(null);
   const [actuatorArmed, setActuatorArmed] = useState<boolean>(true);
-  const [railJogDurationMs, setRailJogDurationMs] = useState<number>(3000);
   const [ignoreRailLimits, setIgnoreRailLimits] = useState<boolean>(false);
+  const [terminalInput, setTerminalInput] = useState<string>('');
+  const [terminalLogs, setTerminalLogs] = useState<Array<{ id: number; time: string; kind: 'sys' | 'tx' | 'rx' | 'err'; text: string }>>(() => [
+    {
+      id: 1,
+      time: '--:--:--',
+      kind: 'sys',
+      text: 'AGRAPATHA Terminal Siap (L298N OUT3/OUT4 · IN3=GPIO16, IN4=GPIO17, ENB=5V | 4-DoF Arm GPIO 13,14,15,5).',
+    },
+    {
+      id: 2,
+      time: '--:--:--',
+      kind: 'sys',
+      text: 'Contoh cepat: ketik "help", "1 90", "servo 90 45 45 90", "L 3000", "R", "S", "C", "home", "estop", "reset".',
+    },
+  ]);
+  const terminalHistoryRef = useRef<string[]>([]);
+  const terminalHistoryIdxRef = useRef<number>(-1);
+  const terminalSeqRef = useRef<number>(3);
+  const terminalScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastTerminalRxSigRef = useRef<string>('');
   const manualSafetyLockRef = useRef<boolean>(false);
   const railHoldActiveRef = useRef<'L' | 'R' | null>(null);
   const mqttWssRef = useRef<MqttWssClient | null>(null);
@@ -222,6 +245,18 @@ export const App: React.FC = () => {
     mqttWssStatusRef.current = mqttWssStatus;
   }, [mqttWssStatus]);
   const hadSseTelemetryRef = useRef<boolean>(false);
+
+  const appendTerminalLog = useCallback((kind: 'sys' | 'tx' | 'rx' | 'err', text: string) => {
+    const nowTime = new Date().toLocaleTimeString('en-GB', { hour12: false });
+    const seq = terminalSeqRef.current++;
+    setTerminalLogs((prev) => [...prev.slice(-79), { id: seq, time: nowTime, kind, text }]);
+  }, []);
+
+  useEffect(() => {
+    if (terminalScrollRef.current) {
+      terminalScrollRef.current.scrollTop = terminalScrollRef.current.scrollHeight;
+    }
+  }, [terminalLogs]);
 
   // Watering / Suppression log state initialized empty (live session logs only)
   const [wateringEvents, setWateringEvents] = useState<WateringLogEvent[]>([]);
@@ -476,6 +511,23 @@ export const App: React.FC = () => {
     if (typeof payload.actionCommand === 'string') setActionCommand(payload.actionCommand);
     if (typeof payload.commandLabel === 'string') setCommandLabel(payload.commandLabel);
 
+    const rxSig = [
+      payload.systemState ?? '',
+      payload.motorState ?? '',
+      payload.limitLeft ? 'L1' : 'L0',
+      payload.limitRight ? 'R1' : 'R0',
+      payload.pumpStatus ? 'P1' : 'P0',
+      Array.isArray(payload.servoAngles) ? payload.servoAngles.join(',') : '',
+    ].join('|');
+    if (rxSig !== lastTerminalRxSigRef.current && (payload.systemState || payload.motorState || Array.isArray(payload.servoAngles))) {
+      lastTerminalRxSigRef.current = rxSig;
+      const srvText = Array.isArray(payload.servoAngles) ? `[${payload.servoAngles.join(',')}]` : '--';
+      appendTerminalLog(
+        'rx',
+        `ESP32: state=${payload.systemState ?? '--'} | L298N=${payload.motorState ?? '--'} | limit=(L:${payload.limitLeft ? 'ACT' : 'CLR'},R:${payload.limitRight ? 'ACT' : 'CLR'}) | servo=${srvText} | pump=${payload.pumpStatus ? 'ON' : 'OFF'}`
+      );
+    }
+
     // Evaluate Botanical ANN (grenvis_sensor_model.h) directly on genuine onboard DHT22 & Soil readings
     const currentSensors = sensorValuesRef.current;
     const currentTemp = newTemp !== null ? newTemp : currentSensors.temp;
@@ -514,7 +566,7 @@ export const App: React.FC = () => {
     if (payload.imageReady === true || isNewScan) {
       fetchGatewayFrameRef.current(false);
     }
-  }, []);
+  }, [appendTerminalLog]);
 
   // Subscribe to read-only Backend Gateway Server-Sent Events (/api/telemetry/stream) when available
   useEffect(() => {
@@ -1096,15 +1148,15 @@ export const App: React.FC = () => {
         if (mqttWssStatus !== 'connecting') {
           startMqttWssConnection(mqttHostInput, mqttUserInput, mqttPassInput, true);
         }
-        showToast(
-          `EMQX WSS belum siap (${mqttWssStatus}): menghubungkan ulang broker untuk mengirim ${humanLabel || cmdName}...`
-        );
+        const msg = `EMQX WSS belum siap (${mqttWssStatus}): menghubungkan ulang broker untuk mengirim ${humanLabel || cmdName}...`;
+        appendTerminalLog('err', msg);
+        showToast(msg);
         return false;
       }
       if (!actuatorArmed && !isEmergencyOrStop && !isCameraCapture) {
-        showToast(
-          `Kunci Keamanan Aktif: Klik tombol "Buka Kunci Kontrol" di panel L298N/Kontrol untuk menjalankan ${humanLabel || cmdName}.`
-        );
+        const msg = `Kunci Keamanan Aktif: ketik "unlock" atau klik "Buka Kunci Kontrol" untuk menjalankan ${humanLabel || cmdName}.`;
+        appendTerminalLog('err', msg);
+        showToast(msg);
         return false;
       }
 
@@ -1117,13 +1169,15 @@ export const App: React.FC = () => {
         else if (cmdName === 'CMD_SLIDER_STOP' || cmdName === 'S' || cmdName === 'CMD_EMERGENCY_STOP') {
           setMovementStatus('stop_command_sent');
         } else if (isCameraCapture) setMovementStatus('capture_command_sent');
+        appendTerminalLog('tx', `${humanLabel ? `${humanLabel} ` : ''}${payloadJson}`);
         showToast(`Perintah Terkirim: ${humanLabel || cmdName}`);
         return true;
       }
+      appendTerminalLog('err', 'Gagal mengirim payload ke broker EMQX.');
       showToast('Gagal mengirim payload ke broker EMQX.');
       return false;
     },
-    [mqttWssStatus, actuatorArmed, mqttHostInput, mqttUserInput, mqttPassInput, startMqttWssConnection, showToast]
+    [mqttWssStatus, actuatorArmed, mqttHostInput, mqttUserInput, mqttPassInput, startMqttWssConnection, appendTerminalLog, showToast]
   );
 
   // Trigger fresh photo capture on ESP32-CAM directly from dashboard (Permitted without ARM AKTUATOR)
@@ -1153,6 +1207,7 @@ export const App: React.FC = () => {
     }
 
     const reqRes = await requestEsp32CamCapture();
+    appendTerminalLog('tx', `Foto ESP32-CAM (${mqttSent ? 'MQTT + ' : ''}Railway capture-request seq=${reqRes?.seq ?? '--'})`);
     showToast(
       mqttSent
         ? 'Meminta ESP32-CAM memotret via MQTT + Railway...'
@@ -1182,31 +1237,31 @@ export const App: React.FC = () => {
     } finally {
       setIsTriggeringEsp32Cam(false);
     }
-  }, [isTriggeringEsp32Cam, mqttWssStatus, handleFetchGatewayFrame, showToast]);
+  }, [isTriggeringEsp32Cam, mqttWssStatus, handleFetchGatewayFrame, appendTerminalLog, showToast]);
 
   const handleToggleActuatorLock = useCallback(() => {
     setActuatorArmed((prev) => {
       const next = !prev;
       manualSafetyLockRef.current = !next;
-      showToast(
-        next
-          ? 'Kontrol Aktuator Dibuka: L298N, 4-DoF Arm & Pompa siap digerakkan dari web.'
-          : 'Kontrol Aktuator Dikunci Manual (Read-Only).'
-      );
+      const msg = next
+        ? 'Kontrol Aktuator Dibuka: L298N OUT3/OUT4, 4-DoF Arm & Pompa siap.'
+        : 'Kontrol Aktuator Dikunci Manual (Read-Only).';
+      appendTerminalLog('sys', msg);
+      showToast(msg);
       return next;
     });
-  }, [showToast]);
+  }, [appendTerminalLog, showToast]);
 
   // L298N Linear Slider & Camera Trigger Wrapper
   const handleRailCommand = useCallback(
-    (cmd: 'L' | 'R' | 'S' | 'C', durationMs: number = railJogDurationMs) => {
+    (cmd: 'L' | 'R' | 'S' | 'C', durationMs: number = 3000) => {
       railHoldActiveRef.current = null;
       if (cmd === 'L') {
         const params: Record<string, unknown> = { duration: durationMs };
         if (ignoreRailLimits) params.ignore_limit = true;
         dispatchRobotCommand(
           'CMD_SLIDER_LEFT',
-          `Gerak Rel Kiri (${(durationMs / 1000).toFixed(1)}s${ignoreRailLimits ? ', Bypass Limit' : ''})`,
+          `L298N Kiri (${(durationMs / 1000).toFixed(1)}s${ignoreRailLimits ? ', Bypass Limit' : ''})`,
           params
         );
         return;
@@ -1216,7 +1271,7 @@ export const App: React.FC = () => {
         if (ignoreRailLimits) params.ignore_limit = true;
         dispatchRobotCommand(
           'CMD_SLIDER_RIGHT',
-          `Gerak Rel Kanan (${(durationMs / 1000).toFixed(1)}s${ignoreRailLimits ? ', Bypass Limit' : ''})`,
+          `L298N Kanan (${(durationMs / 1000).toFixed(1)}s${ignoreRailLimits ? ', Bypass Limit' : ''})`,
           params
         );
         return;
@@ -1227,7 +1282,7 @@ export const App: React.FC = () => {
       }
       dispatchRobotCommand('CMD_TRIGGER_CAPTURE', 'Ambil Foto ESP32-CAM (C)');
     },
-    [railJogDurationMs, ignoreRailLimits, dispatchRobotCommand]
+    [ignoreRailLimits, dispatchRobotCommand]
   );
 
   const handleRailHoldStart = useCallback(
@@ -1238,7 +1293,7 @@ export const App: React.FC = () => {
       if (ignoreRailLimits) params.ignore_limit = true;
       dispatchRobotCommand(
         dir === 'L' ? 'CMD_SLIDER_LEFT' : 'CMD_SLIDER_RIGHT',
-        dir === 'L' ? 'Tahan Rel Kiri (L298N)' : 'Tahan Rel Kanan (L298N)',
+        dir === 'L' ? 'Tahan Rel Kiri (L298N OUT3/4)' : 'Tahan Rel Kanan (L298N OUT3/4)',
         params
       );
     },
@@ -1251,48 +1306,119 @@ export const App: React.FC = () => {
     dispatchRobotCommand('CMD_SLIDER_STOP', 'Stop Rel L298N (Lepas Tahan)');
   }, [dispatchRobotCommand]);
 
-  // Manual 4-DoF Arm Servo Degree Dispatcher (0..180 deg)
-  const SERVO_JOINT_SPECS = useMemo(
-    () => [
-      { idx: 0 as const, key: 'base' as const, label: 'Base J1 (Yaw)', gpio: 13, min: 0, max: 180, defaultDeg: 90, desc: 'Putaran Kiri (30°) ↔ Kanan (150°)' },
-      { idx: 1 as const, key: 'shoulder' as const, label: 'Shoulder J2', gpio: 14, min: 0, max: 180, defaultDeg: 45, desc: 'Elevasi Bahu Lengan (0°–180°)' },
-      { idx: 2 as const, key: 'elbow' as const, label: 'Elbow J3', gpio: 15, min: 0, max: 180, defaultDeg: 45, desc: 'Jangkauan Siku Lengan (0°–180°)' },
-      { idx: 3 as const, key: 'nozzle' as const, label: 'Nozzle J4', gpio: 5, min: 0, max: 180, defaultDeg: 90, desc: 'Sudut Nozzle & Kamera (0°–180°)' },
-    ],
-    []
+  // Execute command from Terminal Console (typing or quick command chip)
+  const handleRunTerminalCommand = useCallback(
+    (overrideCommand?: string) => {
+      const raw = typeof overrideCommand === 'string' ? overrideCommand : terminalInput;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+
+      appendTerminalLog('sys', `$ ${trimmed}`);
+      if (typeof overrideCommand !== 'string') {
+        if (terminalHistoryRef.current[0] !== trimmed) {
+          terminalHistoryRef.current = [trimmed, ...terminalHistoryRef.current.slice(0, 29)];
+        }
+        terminalHistoryIdxRef.current = -1;
+        setTerminalInput('');
+      }
+
+      const parsed = parseRobotTerminalCommand(trimmed, manualServoAngles, ignoreRailLimits);
+      if (!parsed) return;
+
+      if (parsed.type === 'clear') {
+        setTerminalLogs([
+          {
+            id: terminalSeqRef.current++,
+            time: new Date().toLocaleTimeString('en-GB', { hour12: false }),
+            kind: 'sys',
+            text: 'Terminal dibersihkan. Ketik "help" untuk bantuan perintah.',
+          },
+        ]);
+        return;
+      }
+      if (parsed.type === 'help') {
+        TERMINAL_HELP_LINES.forEach((line) => appendTerminalLog('sys', line));
+        return;
+      }
+      if (parsed.type === 'status') {
+        const srv = isLiveTelemetry && !isTelemetryStale && servoAngles ? `[${servoAngles.join(',')}]` : `[target ${manualServoAngles.join(',')}]`;
+        appendTerminalLog(
+          'rx',
+          `STATUS: WSS=${mqttWssStatus} | State=${systemState ?? 'STANDBY'} | Motor=${movementStatus} | Limit=(L:${limitLeft ? 'ACT' : 'CLR'},R:${limitRight ? 'ACT' : 'CLR'}) | Bypass=${ignoreRailLimits ? 'ON' : 'OFF'} | Servo=${srv} | Arm=${armManualMode === false ? 'AUTO' : 'MANUAL'} | Temp=${temp ?? '--'}°C Soil=${soilMoisture ?? '--'}%`
+        );
+        return;
+      }
+      if (parsed.type === 'set_limit_bypass') {
+        setIgnoreRailLimits(parsed.enabled);
+        const msg = `Bypass Limit Switch L298N: ${parsed.enabled ? 'ON (abaikan SW1/SW2)' : 'OFF (limit aktif)'}`;
+        appendTerminalLog('sys', msg);
+        showToast(msg);
+        return;
+      }
+      if (parsed.type === 'set_lock') {
+        manualSafetyLockRef.current = parsed.locked;
+        setActuatorArmed(!parsed.locked);
+        const msg = parsed.locked ? 'Kontrol dikunci (Read-Only).' : 'Kontrol dibuka (Ready).';
+        appendTerminalLog('sys', msg);
+        showToast(msg);
+        return;
+      }
+      if (parsed.type === 'capture_cam') {
+        void handleTriggerEsp32CamCapture();
+        return;
+      }
+      if (parsed.type === 'error') {
+        appendTerminalLog('err', parsed.message);
+        showToast(parsed.message);
+        return;
+      }
+      if (parsed.nextServoAngles) {
+        setManualServoAngles(parsed.nextServoAngles);
+      }
+      dispatchRobotCommand(parsed.cmd, parsed.humanLabel, parsed.params);
+    },
+    [
+      terminalInput,
+      manualServoAngles,
+      ignoreRailLimits,
+      isLiveTelemetry,
+      isTelemetryStale,
+      servoAngles,
+      mqttWssStatus,
+      systemState,
+      movementStatus,
+      limitLeft,
+      limitRight,
+      armManualMode,
+      temp,
+      soilMoisture,
+      appendTerminalLog,
+      handleTriggerEsp32CamCapture,
+      dispatchRobotCommand,
+      showToast,
+    ]
   );
 
-  const handleSetAllServoAngles = (angles: [number, number, number, number] = manualServoAngles) => {
-    const clamped: [number, number, number, number] = [
-      Math.max(0, Math.min(180, Math.round(angles[0]))),
-      Math.max(0, Math.min(180, Math.round(angles[1]))),
-      Math.max(0, Math.min(180, Math.round(angles[2]))),
-      Math.max(0, Math.min(180, Math.round(angles[3]))),
-    ];
-    setManualServoAngles(clamped);
-    dispatchRobotCommand(
-      'CMD_SET_SERVO',
-      `Set Arm Manual (${clamped[0]}°/${clamped[1]}°/${clamped[2]}°/${clamped[3]}°)`,
-      {
-        base: clamped[0],
-        shoulder: clamped[1],
-        elbow: clamped[2],
-        nozzle: clamped[3],
+  const handleTerminalKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const hist = terminalHistoryRef.current;
+      if (hist.length === 0) return;
+      const nextIdx = Math.min(hist.length - 1, terminalHistoryIdxRef.current + 1);
+      terminalHistoryIdxRef.current = nextIdx;
+      setTerminalInput(hist[nextIdx]);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const hist = terminalHistoryRef.current;
+      if (terminalHistoryIdxRef.current <= 0) {
+        terminalHistoryIdxRef.current = -1;
+        setTerminalInput('');
+      } else {
+        const nextIdx = terminalHistoryIdxRef.current - 1;
+        terminalHistoryIdxRef.current = nextIdx;
+        setTerminalInput(hist[nextIdx]);
       }
-    );
-  };
-
-  const handleSetSingleServoAngle = (jointIdx: 0 | 1 | 2 | 3, targetDeg: number) => {
-    const clampedDeg = Math.max(0, Math.min(180, Math.round(targetDeg)));
-    const spec = SERVO_JOINT_SPECS[jointIdx];
-    const nextTuple: [number, number, number, number] = [...manualServoAngles] as [number, number, number, number];
-    nextTuple[jointIdx] = clampedDeg;
-    setManualServoAngles(nextTuple);
-    dispatchRobotCommand(
-      'CMD_SET_SERVO',
-      `Set ${spec.label} -> ${clampedDeg}°`,
-      { [spec.key]: clampedDeg }
-    );
+    }
   };
 
   // Record manual watering / suppression
@@ -3627,313 +3753,115 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Kontrol Manual Derajat 4-DoF Arm (Seperti L298N) */}
-                  <div className="bg-gradient-to-br from-violet-50/60 to-white border border-violet-200 rounded-2xl p-4 sm:p-5 mb-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-violet-200/80">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-violet-100 border border-violet-200 text-violet-700 flex items-center justify-center shrink-0">
-                          <Sliders size={16} />
+                  {/* Compact Quick Bar + Terminal Kontrol L298N & 4-DoF Arm */}
+                  <div className="rounded-2xl overflow-hidden border border-[#1E3B33] bg-[#0B1714] text-emerald-50 shadow-md mb-4">
+                    {/* Terminal Window Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-[#11241F] border-b border-[#1E3B33]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F]" />
                         </div>
-                        <div>
-                          <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
-                            Kontrol Manual Sudut Derajat Lengan Robot 4-DoF (0°–180°)
-                          </span>
-                          <span className="text-[11px] text-[#46655D] block">
-                            Mode default saat ESP32 nyala: <strong className="text-violet-800">{armManualMode === false ? 'AUTO SCAN' : 'MANUAL ARM'}</strong> — geser slider atau pilih sudut tiap servo (langsung aktif saat WSS terhubung).
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_SET_ARM_MODE', 'Aktifkan Mode Manual Arm', { manual: true })}
-                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border cursor-pointer ${
-                            armManualMode !== false
-                              ? 'bg-violet-600 text-white border-violet-700 shadow-xs'
-                              : 'bg-white text-violet-800 border-violet-200 hover:bg-violet-50'
-                          }`}
-                        >
-                          Mode Manual (Default)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => dispatchRobotCommand('CMD_SET_ARM_MODE', 'Aktifkan Mode Auto Scan', { manual: false })}
-                          className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border cursor-pointer ${
-                            armManualMode === false
-                              ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                              : 'bg-white text-[#46655D] border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          Mode Auto Scan
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (servoAngles && servoAngles.length >= 4) {
-                              setManualServoAngles([
-                                Math.max(0, Math.min(180, Math.round(servoAngles[0]))),
-                                Math.max(0, Math.min(180, Math.round(servoAngles[1]))),
-                                Math.max(0, Math.min(180, Math.round(servoAngles[2]))),
-                                Math.max(0, Math.min(180, Math.round(servoAngles[3]))),
-                              ]);
-                              showToast('Slider disamakan ke sudut aktual ESP32.');
-                            }
-                          }}
-                          disabled={!isLiveTelemetry || isTelemetryStale || !servoAngles || servoAngles.length < 4}
-                          className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border bg-white text-[#102A24] border-[#CFE2D9] hover:bg-[#F2F8F5] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Sync Aktual
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSetAllServoAngles([90, 45, 45, 90])}
-                          className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold border bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50 cursor-pointer"
-                        >
-                          Reset Netral (90/45/45/90°)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSetAllServoAngles()}
-                          className="px-3.5 py-1.5 rounded-xl text-[11px] font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-xs cursor-pointer"
-                        >
-                          Kirim Semua 4 Sudut
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {SERVO_JOINT_SPECS.map((spec) => {
-                        const targetVal = manualServoAngles[spec.idx];
-                        const liveVal =
-                          isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[spec.idx] === 'number'
-                            ? Math.round(servoAngles[spec.idx])
-                            : null;
-                        return (
-                          <div key={spec.key} className="bg-white border border-violet-200/80 rounded-xl p-3.5 flex flex-col gap-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <span className="text-xs font-extrabold text-[#102A24] block">
-                                  {spec.label} <span className="font-mono text-[10px] text-violet-700">· GPIO {spec.gpio}</span>
-                                </span>
-                                <span className="text-[11px] text-[#46655D]">{spec.desc}</span>
-                              </div>
-                              <div className="text-right font-tabular shrink-0">
-                                <span className="block text-[10px] text-[#46655D] uppercase">Aktual ESP32</span>
-                                <span className="text-xs font-extrabold text-violet-800">
-                                  {liveVal !== null ? `${liveVal}°` : '--'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2.5">
-                              <input
-                                type="range"
-                                min={spec.min}
-                                max={spec.max}
-                                step={1}
-                                value={targetVal}
-                                aria-label={`Slider derajat ${spec.label}`}
-                                onChange={(e) => {
-                                  const nextDeg = Number(e.target.value);
-                                  setManualServoAngles((prev) => {
-                                    const copy = [...prev] as [number, number, number, number];
-                                    copy[spec.idx] = nextDeg;
-                                    return copy;
-                                  });
-                                }}
-                                onPointerUp={() => {
-                                  if (mqttWssStatus === 'connected' && actuatorArmed) {
-                                    handleSetSingleServoAngle(spec.idx, targetVal);
-                                  }
-                                }}
-                                className="flex-1 accent-violet-600 cursor-pointer"
-                              />
-                              <div className="flex items-center gap-1 shrink-0">
-                                <input
-                                  type="number"
-                                  min={spec.min}
-                                  max={spec.max}
-                                  value={targetVal}
-                                  aria-label={`Input derajat ${spec.label}`}
-                                  onChange={(e) => {
-                                    const raw = Number(e.target.value);
-                                    if (!Number.isFinite(raw)) return;
-                                    const clamped = Math.max(0, Math.min(180, Math.round(raw)));
-                                    setManualServoAngles((prev) => {
-                                      const copy = [...prev] as [number, number, number, number];
-                                      copy[spec.idx] = clamped;
-                                      return copy;
-                                    });
-                                  }}
-                                  className="w-14 px-2 py-1 rounded-lg border border-violet-200 text-xs font-bold font-mono text-center text-[#102A24]"
-                                />
-                                <span className="text-xs font-bold text-[#46655D]">°</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                              <div className="flex items-center gap-1">
-                                {[-15, -5, 5, 15].map((delta) => (
-                                  <button
-                                    key={delta}
-                                    type="button"
-                                    onClick={() => handleSetSingleServoAngle(spec.idx, targetVal + delta)}
-                                    className="px-2 py-1 rounded-lg bg-[#F2F8F5] hover:bg-violet-50 border border-[#CFE2D9] text-[11px] font-bold font-mono text-[#102A24] cursor-pointer"
-                                  >
-                                    {delta > 0 ? `+${delta}°` : `${delta}°`}
-                                  </button>
-                                ))}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleSetSingleServoAngle(spec.idx, targetVal)}
-                                className="px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold font-mono cursor-pointer"
-                              >
-                                Terapkan {targetVal}°
-                              </button>
-                            </div>
-
-                            {spec.idx === 0 && (
-                              <div className="pt-2 border-t border-violet-100 flex items-center gap-1 flex-wrap">
-                                <span className="text-[10px] font-bold text-[#46655D] mr-1">Arah Sektor:</span>
-                                {FLAME_CHANNEL_SPECS.map((ch) => (
-                                  <button
-                                    key={ch.key}
-                                    type="button"
-                                    onClick={() => handleSetSingleServoAngle(0, ch.angleDeg)}
-                                    title={`Arahkan Base J1 ke ${ch.key} (${ch.label} ${ch.angleDeg}°)`}
-                                    className="px-2 py-0.5 rounded-md bg-violet-50 hover:bg-violet-100 border border-violet-200 text-[10px] font-bold font-mono text-violet-800 cursor-pointer"
-                                  >
-                                    {ch.angleDeg}° {ch.shortLabel}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Dedicated L298N Motor Rel Control Box */}
-                  <div className="bg-gradient-to-br from-emerald-50/70 to-white border border-emerald-200 rounded-2xl p-4 sm:p-5 mb-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-emerald-200/80">
-                      <div>
-                        <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
-                          Kontrol Manual Motor Rel Linear L298N (OUT3 &amp; OUT4 · IN3: GPIO 16 · IN4: GPIO 17 · ENB 5V)
-                        </span>
-                        <span className="text-[11px] text-[#46655D] block">
-                          Klik <strong>Rel Kiri/Kanan</strong> untuk gerak berdurasi, atau <strong>Tekan &amp; Tahan</strong> untuk menggerakkan motor terus hingga dilepas.
+                        <Terminal size={14} className="text-emerald-400 shrink-0" />
+                        <span className="text-xs font-mono font-bold text-emerald-100 truncate">
+                          agrapatha@esp32:~$ · Terminal Kontrol L298N (OUT3/OUT4 · IN3:16 IN4:17) &amp; Arm 4-DoF
                         </span>
                       </div>
-                      <span
-                        className={`text-[11px] font-bold px-3 py-1 rounded-full border font-mono ${
-                          movementStatus === 'left_command_sent' || movementStatus === 'right_command_sent'
-                            ? 'bg-emerald-600 text-white border-emerald-700 animate-pulse'
-                            : 'bg-white text-[#102A24] border-[#CFE2D9]'
-                        }`}
-                      >
-                        {movementStatus === 'left_command_sent'
-                          ? '◀ BERGERAK KIRI (IN3=HIGH)'
-                          : movementStatus === 'right_command_sent'
-                            ? 'BERGERAK KANAN (IN4=HIGH) ▶'
-                            : '■ BERHENTI (STOPPED)'}
-                      </span>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                            movementStatus === 'left_command_sent' || movementStatus === 'right_command_sent'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
+                              : 'bg-[#0B1714] text-slate-300 border-[#284B41]'
+                          }`}
+                        >
+                          L298N: {movementStatus === 'left_command_sent' ? 'KIRI (IN3=1)' : movementStatus === 'right_command_sent' ? 'KANAN (IN4=1)' : 'STOP'}
+                        </span>
+                        <label className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#0B1714] border border-[#284B41] text-[10px] font-mono text-amber-300 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={ignoreRailLimits}
+                            onChange={(e) => {
+                              const next = e.target.checked;
+                              setIgnoreRailLimits(next);
+                              appendTerminalLog('sys', `Bypass Limit Switch L298N: ${next ? 'ON' : 'OFF'}`);
+                            }}
+                            className="accent-amber-400 cursor-pointer"
+                          />
+                          <span>Bypass Limit</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleRunTerminalCommand('status')}
+                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-sky-300 cursor-pointer"
+                        >
+                          status
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRunTerminalCommand('help')}
+                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-emerald-300 cursor-pointer"
+                        >
+                          help
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRunTerminalCommand('clear')}
+                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-slate-300 cursor-pointer"
+                        >
+                          clear
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Blocker Diagnostics & 1-Click Fix */}
+                    {/* Inline Diagnostics inside Terminal (only if blocked) */}
                     {(mqttWssStatus !== 'connected' || !actuatorArmed || systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT' || limitLeft || limitRight) && (
-                      <div className="mb-3 space-y-2">
+                      <div className="px-4 py-2 bg-[#14231F] border-b border-[#24433B] flex flex-wrap items-center gap-2 text-[11px] font-mono">
                         {mqttWssStatus !== 'connected' && (
-                          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
-                            <span>
-                              <strong>EMQX WSS belum terhubung ({mqttWssStatus}):</strong> perintah L298N butuh jalur WSS :8084 aktif.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleConnectMqttWss()}
-                              className="px-3 py-1 rounded-lg bg-[#0F766E] text-white font-bold text-[11px] cursor-pointer hover:bg-[#0D5D57]"
-                            >
-                              Hubungkan EMQX WSS
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleConnectMqttWss()}
+                            className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 cursor-pointer"
+                          >
+                            [!] WSS {mqttWssStatus} — Klik Hubungkan EMQX :8084
+                          </button>
                         )}
                         {!actuatorArmed && (
-                          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
-                            <span>
-                              <strong>Kontrol Aktuator sedang dikunci manual.</strong> Buka kunci agar L298N &amp; servo bisa digerakkan.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleToggleActuatorLock}
-                              className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] cursor-pointer hover:bg-emerald-700"
-                            >
-                              Buka Kunci Kontrol
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={handleToggleActuatorLock}
+                            className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 cursor-pointer"
+                          >
+                            [!] Terkunci — Klik Buka Kunci
+                          </button>
                         )}
                         {(systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT') && (
-                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 flex flex-wrap items-center justify-between gap-2">
-                            <span>
-                              <strong>ESP32 dalam status {systemState}:</strong> motor L298N ditahan sampai di-reset.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset E-STOP / Fault')}
-                              className="px-3 py-1 rounded-lg bg-rose-600 text-white font-bold text-[11px] cursor-pointer hover:bg-rose-700"
-                            >
-                              Reset E-STOP / Fault
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset E-STOP / Fault')}
+                            className="px-2.5 py-1 rounded-md bg-rose-500/25 hover:bg-rose-500/35 text-rose-200 border border-rose-400/50 cursor-pointer"
+                          >
+                            [!] {systemState} — Klik Reset E-STOP
+                          </button>
                         )}
                         {(limitLeft || limitRight) && (
-                          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-2">
-                            <Info size={14} className="shrink-0 mt-0.5 text-amber-600" />
+                          <span className="text-amber-300 flex items-center gap-1">
+                            <Info size={12} className="shrink-0" />
                             <span>
-                              Limit Switch terbaca <strong>ACTIVE (LOW)</strong> ({limitLeft ? 'SW1 Kiri GPIO 18' : ''}{limitLeft && limitRight ? ' & ' : ''}{limitRight ? 'SW2 Kanan GPIO 19' : ''}). Jika belum memakai switch Normally-Open (NO) atau switch bertipe Normally-Closed (NC), centang <strong>Bypass Limit</strong> di bawah untuk uji motor L298N.
+                              Limit {limitLeft ? 'SW1(L)' : ''}{limitLeft && limitRight ? '+' : ''}{limitRight ? 'SW2(R)' : ''} ACTIVE (LOW) — centang Bypass Limit jika switch belum terpasang / NC.
                             </span>
-                          </div>
+                          </span>
                         )}
                       </div>
                     )}
 
-                    {/* Duration & Limit Switch Bypass Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-[#46655D] mr-1">Durasi Sekali Klik:</span>
-                        {[500, 1500, 3000, 5000, 8000].map((ms) => (
-                          <button
-                            key={ms}
-                            type="button"
-                            onClick={() => setRailJogDurationMs(ms)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono border cursor-pointer ${
-                              railJogDurationMs === ms
-                                ? 'bg-[#0F766E] text-white border-[#0F766E] shadow-xs'
-                                : 'bg-white text-[#102A24] border-[#CFE2D9] hover:bg-[#F2F8F5]'
-                            }`}
-                          >
-                            {(ms / 1000).toFixed(1)}s
-                          </button>
-                        ))}
-                      </div>
-
-                      <label className="inline-flex items-center gap-2 text-[11px] font-bold text-[#102A24] bg-white border border-[#CFE2D9] rounded-xl px-3 py-1.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={ignoreRailLimits}
-                          onChange={(e) => setIgnoreRailLimits(e.target.checked)}
-                          className="accent-amber-600 cursor-pointer"
-                        />
-                        <span>Bypass Limit Switch (Uji Motor L298N)</span>
-                      </label>
-                    </div>
-
-                    {/* 5 L298N Controls: Hold Left, Click Left, Stop, Click Right, Hold Right */}
+                    {/* Quick 1-Tap Controls Row (L298N Hold/Move, Cam, Pump, Home, E-STOP) */}
                     <div
-                      className="grid grid-cols-2 sm:grid-cols-5 gap-2.5"
+                      className="px-3.5 py-2.5 bg-[#0F1F1B] border-b border-[#1E3B33] flex flex-wrap items-center gap-1.5"
                       role="group"
-                      aria-label="Kontrol Arah Motor Rel L298N"
+                      aria-label="Pintasan Cepat Terminal Robot"
                     >
                       <button
                         type="button"
@@ -3941,134 +3869,190 @@ export const App: React.FC = () => {
                         onPointerUp={handleRailHoldEnd}
                         onPointerCancel={handleRailHoldEnd}
                         onPointerLeave={handleRailHoldEnd}
-                        disabled={mqttWssStatus === 'connecting'}
-                        className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-white hover:bg-emerald-50 active:bg-emerald-600 active:text-white text-[#102A24] border-[#CFE2D9] cursor-pointer touch-none select-none disabled:opacity-50"
-                        title="Tekan & tahan untuk menggerakkan L298N ke kiri hingga tombol dilepas"
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-emerald-700/40 active:bg-emerald-600 text-emerald-100 border border-[#284B41] text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer touch-none select-none"
+                        title="Tekan & tahan untuk menggerakkan L298N ke kiri"
                       >
-                        <ArrowLeft size={14} />
-                        <span>Tahan Kiri</span>
+                        <ArrowLeft size={12} />
+                        <span>Tahan L</span>
                       </button>
-
                       <button
                         type="button"
-                        onClick={() => handleRailCommand('L')}
-                        disabled={mqttWssStatus === 'connecting'}
-                        className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 cursor-pointer disabled:opacity-50"
+                        onClick={() => handleRailCommand('L', 3000)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <ArrowLeft size={14} />
-                        <span>Rel Kiri ({(railJogDurationMs / 1000).toFixed(1)}s)</span>
+                        <ArrowLeft size={12} />
+                        <span>L 3s</span>
                       </button>
-
                       <button
                         type="button"
                         onClick={() => handleRailCommand('S')}
-                        disabled={mqttWssStatus === 'connecting'}
-                        className="col-span-2 sm:col-span-1 min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 cursor-pointer disabled:opacity-50"
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/40 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <Square size={14} />
-                        <span>Stop Rel (S)</span>
+                        <Square size={11} />
+                        <span>Stop (S)</span>
                       </button>
-
                       <button
                         type="button"
-                        onClick={() => handleRailCommand('R')}
-                        disabled={mqttWssStatus === 'connecting'}
-                        className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 cursor-pointer disabled:opacity-50"
+                        onClick={() => handleRailCommand('R', 3000)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
                       >
-                        <span>Rel Kanan ({(railJogDurationMs / 1000).toFixed(1)}s)</span>
-                        <ArrowRight size={14} />
+                        <span>R 3s</span>
+                        <ArrowRight size={12} />
                       </button>
-
                       <button
                         type="button"
                         onPointerDown={() => handleRailHoldStart('R')}
                         onPointerUp={handleRailHoldEnd}
                         onPointerCancel={handleRailHoldEnd}
                         onPointerLeave={handleRailHoldEnd}
-                        disabled={mqttWssStatus === 'connecting'}
-                        className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border shadow-xs bg-white hover:bg-emerald-50 active:bg-emerald-600 active:text-white text-[#102A24] border-[#CFE2D9] cursor-pointer touch-none select-none disabled:opacity-50"
-                        title="Tekan & tahan untuk menggerakkan L298N ke kanan hingga tombol dilepas"
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-emerald-700/40 active:bg-emerald-600 text-emerald-100 border border-[#284B41] text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer touch-none select-none"
+                        title="Tekan & tahan untuk menggerakkan L298N ke kanan"
                       >
-                        <span>Tahan Kanan</span>
-                        <ArrowRight size={14} />
+                        <span>Tahan R</span>
+                        <ArrowRight size={12} />
+                      </button>
+
+                      <span className="text-[#284B41] mx-0.5 select-none">|</span>
+
+                      <button
+                        type="button"
+                        onClick={handleTriggerEsp32CamCapture}
+                        disabled={isTriggeringEsp32Cam}
+                        className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <Camera size={12} className={isTriggeringEsp32Cam ? 'animate-spin' : ''} />
+                        <span>{isTriggeringEsp32Cam ? 'CAM...' : 'Foto (C)'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('home')}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-violet-200 border border-[#284B41] text-[11px] font-mono font-bold cursor-pointer"
+                      >
+                        home
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand(armManualMode === false ? 'manual' : 'auto')}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-violet-200 border border-[#284B41] text-[11px] font-mono font-bold cursor-pointer"
+                      >
+                        {armManualMode === false ? 'set manual' : 'set auto'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('park')}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#162C26] hover:bg-[#1E3B33] text-emerald-200 border border-[#284B41] text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <ShieldCheck size={12} />
+                        <span>park</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand(pumpStatus ? 'pump off' : 'pump on')}
+                        disabled={!pumpStatus && Boolean(pumpLockout)}
+                        className="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <Droplet size={12} />
+                        <span>{pumpStatus ? 'pump off' : 'pump on'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('estop')}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer ml-auto"
+                      >
+                        <AlertOctagon size={12} />
+                        <span>estop</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('reset')}
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-600/25 hover:bg-amber-600/40 text-amber-200 border border-amber-400/40 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        <span>reset</span>
                       </button>
                     </div>
-                  </div>
 
-                  {/* Camera Trigger, Pompa Manual, Arm Park & Emergency Stop Controls */}
-                  <div
-                    className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
-                    role="group"
-                    aria-label="Kontrol Kamera & Pompa Manual"
-                  >
-                    <button
-                      type="button"
-                      onClick={handleTriggerEsp32CamCapture}
-                      disabled={isTriggeringEsp32Cam}
-                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#0F766E] hover:bg-[#0D5D57] text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Ambil foto dari ESP32-CAM lewat dashboard"
+                    {/* Scrolling Terminal Output */}
+                    <div
+                      ref={terminalScrollRef}
+                      className="h-60 sm:h-68 overflow-y-auto px-4 py-3 font-mono text-xs leading-relaxed space-y-1 bg-[#0B1714]"
                     >
-                      <Camera size={14} className={isTriggeringEsp32Cam ? 'animate-spin' : ''} />
-                      <span>{isTriggeringEsp32Cam ? 'Memotret CAM...' : 'Foto ESP32-CAM (C)'}</span>
-                    </button>
+                      {terminalLogs.map((entry) => (
+                        <div key={entry.id} className="flex items-start gap-2 break-all">
+                          <span className="text-slate-500 shrink-0 select-none">[{entry.time}]</span>
+                          <span
+                            className={
+                              entry.kind === 'tx'
+                                ? 'text-emerald-300 font-semibold'
+                                : entry.kind === 'rx'
+                                  ? 'text-sky-300'
+                                  : entry.kind === 'err'
+                                    ? 'text-rose-400 font-semibold'
+                                    : 'text-slate-200'
+                            }
+                          >
+                            {entry.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_START_IRRIGATION', 'Nyalakan Pompa Manual', { duration: 4000 })}
-                      disabled={Boolean(pumpLockout)}
-                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-sky-50 hover:bg-sky-100 text-sky-900 border-sky-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    {/* Terminal Command Prompt Input */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleRunTerminalCommand();
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-[#11241F] border-t border-[#1E3B33]"
                     >
-                      <Droplet size={14} />
-                      <span>Pompa ON (4s)</span>
-                    </button>
+                      <span className="font-mono text-xs sm:text-[13px] font-bold text-emerald-400 select-none shrink-0">
+                        agrapatha:~$
+                      </span>
+                      <input
+                        type="text"
+                        value={terminalInput}
+                        onChange={(e) => setTerminalInput(e.target.value)}
+                        onKeyDown={handleTerminalKeyDown}
+                        placeholder="Ketik perintah: 1 90 | 2 45 | 3 60 | 4 90 | servo 90 45 45 90 | L 3000 | R | S | C | help"
+                        aria-label="Prompt Perintah Terminal Robot"
+                        className="flex-1 min-w-0 bg-transparent text-emerald-100 placeholder:text-slate-500 font-mono text-xs sm:text-[13px] focus:outline-none"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      <button
+                        type="submit"
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shrink-0 cursor-pointer"
+                      >
+                        Kirim
+                      </button>
+                    </form>
 
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_STOP_PUMP', 'Matikan Pompa Manual')}
-                      className="min-h-11 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-rose-50 text-rose-800 border-rose-200 cursor-pointer"
-                    >
-                      <Square size={14} />
-                      <span>Matikan Pompa</span>
-                    </button>
-                  </div>
-
-                  {/* Arm Park & Emergency Stop Controls */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_RETRACT_ARM', 'Tarik Lengan ke Posisi Parkir')}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#F2F8F5] text-[#102A24] border-[#CFE2D9] cursor-pointer"
-                    >
-                      <Crosshair size={14} className="text-sky-600" />
-                      <span>Retract Arm (Park)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_PARK_SAFE_ZONE', 'Parkir di Safe Zone')}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-white hover:bg-[#F2F8F5] text-[#102A24] border-[#CFE2D9] cursor-pointer"
-                    >
-                      <ShieldCheck size={14} className="text-emerald-600" />
-                      <span>Park Safe Zone</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_EMERGENCY_STOP', 'EMERGENCY STOP DARURAT')}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white shadow-sm cursor-pointer"
-                    >
-                      <AlertOctagon size={14} />
-                      <span>EMERGENCY STOP</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset Emergency Stop')}
-                      className="min-h-10 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 cursor-pointer"
-                    >
-                      <RotateCcw size={14} />
-                      <span>Reset E-STOP</span>
-                    </button>
+                    {/* Clickable Syntax Examples (Pre-fill Input) */}
+                    <div className="px-4 py-2 bg-[#0E1D19] border-t border-[#1A332C] flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-slate-400">
+                      <span className="select-none mr-1">Contoh ketik:</span>
+                      {[
+                        '1 30',
+                        '1 90',
+                        '1 150',
+                        '2 45',
+                        '3 60',
+                        '4 90',
+                        'servo 90 45 45 90',
+                        'L 3000',
+                        'R 3000',
+                        'L 2s bypass',
+                      ].map((sample) => (
+                        <button
+                          key={sample}
+                          type="button"
+                          onClick={() => setTerminalInput(sample)}
+                          className="px-2 py-0.5 rounded bg-[#162C26] hover:bg-[#204037] text-emerald-200 border border-[#284B41] cursor-pointer"
+                          title={`Isi prompt dengan "${sample}"`}
+                        >
+                          {sample}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
