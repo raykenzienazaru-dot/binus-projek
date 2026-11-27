@@ -141,7 +141,7 @@ const LiveClockBadge: React.FC<{ isGlassy: boolean }> = React.memo(({ isGlassy }
   );
 });
 
-export type ActiveDashboardTab = 'overview' | 'bmkg' | 'model_botanical' | 'model_vision' | 'all';
+export type ActiveDashboardTab = 'overview' | 'bmkg' | 'model_botanical' | 'model_vision' | 'model_console' | 'all';
 
 export const App: React.FC = () => {
   // Boot splash state ('boot' shows the 3D Welcome screen just like flora-six-zeta.vercel.app)
@@ -150,7 +150,12 @@ export const App: React.FC = () => {
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [currentTab, setCurrentTab] = useState<ActiveDashboardTab>('overview');
   const [isDashboard1Open, setIsDashboard1Open] = useState(true);
-  const isDashboard1Active = currentTab === 'overview' || currentTab === 'bmkg' || currentTab === 'model_botanical' || currentTab === 'model_vision';
+  const isDashboard1Active =
+    currentTab === 'overview' ||
+    currentTab === 'bmkg' ||
+    currentTab === 'model_botanical' ||
+    currentTab === 'model_vision' ||
+    currentTab === 'model_console';
   const [isScrolled, setIsScrolled] = useState(() => typeof window !== 'undefined' && window.scrollY > 0);
   const headerRef = useRef<HTMLDivElement | null>(null);
 
@@ -269,12 +274,20 @@ export const App: React.FC = () => {
   const routineStepIdRef = useRef<number>(1);
   const playbackRunIdRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
+  const [consoleSandboxMode, setConsoleSandboxMode] = useState<boolean>(false);
+  const [sandboxServoAngles, setSandboxServoAngles] = useState<[number, number, number, number]>([90, 45, 45, 90]);
+  const [sandboxRailMm, setSandboxRailMm] = useState<number>(600);
+  const [sandboxPumpOn, setSandboxPumpOn] = useState<boolean>(false);
+  const consoleSandboxRef = useRef<boolean>(false);
+  consoleSandboxRef.current = consoleSandboxMode;
+  const sandboxRailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackAbortSleepRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     return () => {
       playbackRunIdRef.current++;
       isPlayingRef.current = false;
       playbackAbortSleepRef.current?.();
+      if (sandboxRailTimerRef.current) clearTimeout(sandboxRailTimerRef.current);
     };
   }, []);
   const manualSafetyLockRef = useRef<boolean>(false);
@@ -944,7 +957,7 @@ export const App: React.FC = () => {
     if (tryScroll()) return;
 
     // If element is not rendered in current tab (e.g. filtered view), return to overview and poll
-    if (currentTab !== 'overview' && currentTab !== 'all') {
+    if (currentTab !== 'overview' && currentTab !== 'all' && !(id === 'device-control' && currentTab === 'model_console')) {
       setCurrentTab('overview');
     }
 
@@ -1200,8 +1213,16 @@ export const App: React.FC = () => {
       playbackAbortSleepRef.current?.();
       playbackAbortSleepRef.current = null;
       setPlaybackStatus({ mode: 'idle', loopIteration: 0, activeStepIdx: -1, totalSteps: 0 });
-      if (wasRunning && alsoStopMotor && mqttWssStatusRef.current === 'connected' && mqttWssRef.current) {
-        mqttWssRef.current.publish('agrapatha/commands', JSON.stringify({ cmd: 'CMD_SLIDER_STOP' }));
+      if (wasRunning && alsoStopMotor) {
+        if (consoleSandboxRef.current) {
+          if (sandboxRailTimerRef.current) {
+            clearTimeout(sandboxRailTimerRef.current);
+            sandboxRailTimerRef.current = null;
+          }
+          setMovementStatus('stop_command_sent');
+        } else if (mqttWssStatusRef.current === 'connected' && mqttWssRef.current) {
+          mqttWssRef.current.publish('agrapatha/commands', JSON.stringify({ cmd: 'CMD_SLIDER_STOP' }));
+        }
       }
       if (wasRunning && reason) {
         appendTerminalLog('sys', reason);
@@ -1211,7 +1232,20 @@ export const App: React.FC = () => {
     [appendTerminalLog, showToast]
   );
 
-  // Dispatch two-way executable robot commands to MQTT `agrapatha/commands`
+  const handleToggleConsoleSandbox = useCallback(() => {
+    stopPlayback();
+    setConsoleSandboxMode((prev) => {
+      const next = !prev;
+      const msg = next
+        ? '[MODE COBA LOKAL ON] Arm & L298N disimulasikan di layar tanpa mengirim ke ESP32.'
+        : '[MODE LIVE ESP32 ON] Perintah Terminal dikirim nyata ke ESP32 via EMQX WSS :8084.';
+      appendTerminalLog('sys', msg);
+      showToast(next ? 'Mode Coba Lokal aktif (uji coba tanpa alat)' : 'Kembali ke Mode Live ESP32');
+      return next;
+    });
+  }, [stopPlayback, appendTerminalLog, showToast]);
+
+  // Dispatch two-way executable robot commands to MQTT `agrapatha/commands` (or Local Sandbox Sim)
   const dispatchRobotCommand = useCallback(
     (cmdName: string, humanLabel?: string, params?: Record<string, unknown>) => {
       const isEmergencyOrStop =
@@ -1223,11 +1257,68 @@ export const App: React.FC = () => {
       if (cmdName === 'CMD_EMERGENCY_STOP' && isPlayingRef.current) {
         stopPlayback('[LOOP DIHENTIKAN] E-STOP dipicu!', false);
       }
+
+      if (consoleSandboxRef.current) {
+        if (!actuatorArmed && !isEmergencyOrStop && !isCameraCapture) {
+          const msg = `Kunci Keamanan Aktif: klik "Buka Kunci" untuk mencoba ${humanLabel || cmdName}.`;
+          appendTerminalLog('err', msg);
+          showToast(msg);
+          return false;
+        }
+        const payloadJson = JSON.stringify(params ? { cmd: cmdName, params } : { cmd: cmdName });
+        setLastCommand(cmdName);
+        if (cmdName === 'CMD_SLIDER_LEFT' || cmdName === 'L' || cmdName === 'CMD_SLIDER_RIGHT' || cmdName === 'R') {
+          const isLeft = cmdName === 'CMD_SLIDER_LEFT' || cmdName === 'L';
+          const dur = typeof params?.duration === 'number' && Number.isFinite(params.duration) ? Math.max(100, Math.min(15000, params.duration)) : 3000;
+          setMovementStatus(isLeft ? 'left_command_sent' : 'right_command_sent');
+          setSandboxRailMm((prev) => Math.max(0, Math.min(1200, Math.round(prev + (isLeft ? -1 : 1) * (dur * 0.16)))));
+          if (sandboxRailTimerRef.current) clearTimeout(sandboxRailTimerRef.current);
+          sandboxRailTimerRef.current = setTimeout(() => {
+            setMovementStatus('stop_command_sent');
+          }, dur);
+        } else if (cmdName === 'CMD_SLIDER_STOP' || cmdName === 'S' || cmdName === 'CMD_EMERGENCY_STOP') {
+          if (sandboxRailTimerRef.current) clearTimeout(sandboxRailTimerRef.current);
+          setMovementStatus('stop_command_sent');
+          if (cmdName === 'CMD_EMERGENCY_STOP') setSandboxPumpOn(false);
+        } else if (cmdName === 'CMD_SET_SERVO' && params) {
+          setSandboxServoAngles((prev) => [
+            typeof params.base === 'number' ? Math.max(0, Math.min(180, Math.round(params.base))) : prev[0],
+            typeof params.shoulder === 'number' ? Math.max(0, Math.min(180, Math.round(params.shoulder))) : prev[1],
+            typeof params.elbow === 'number' ? Math.max(0, Math.min(180, Math.round(params.elbow))) : prev[2],
+            typeof params.nozzle === 'number' ? Math.max(0, Math.min(180, Math.round(params.nozzle))) : prev[3],
+          ]);
+        } else if (cmdName === 'CMD_ARM_HOME' || cmdName === 'CMD_PARK_SAFE_ZONE') {
+          setSandboxServoAngles([90, 45, 45, 90]);
+        } else if (cmdName === 'CMD_START_IRRIGATION' || cmdName === 'CMD_START_MISTING') {
+          setSandboxPumpOn(true);
+        } else if (cmdName === 'CMD_STOP_PUMP') {
+          setSandboxPumpOn(false);
+        }
+
+        if (isRecordingRef.current && !isPlayingRef.current) {
+          setRecordingSteps((prev) =>
+            appendRecordedStep(prev, {
+              id: routineStepIdRef.current++,
+              cmd: cmdName,
+              label: humanLabel || cmdName,
+              params,
+              timestampMs: Date.now(),
+            })
+          );
+        }
+
+        appendTerminalLog('tx', `[SIMULASI] ${humanLabel ? `${humanLabel} ` : ''}${payloadJson}`);
+        if (!isPlayingRef.current) {
+          showToast(`[Simulasi] ${humanLabel || cmdName}`);
+        }
+        return true;
+      }
+
       if (mqttWssStatus !== 'connected' || !mqttWssRef.current) {
         if (mqttWssStatus !== 'connecting') {
           startMqttWssConnection(mqttHostInput, mqttUserInput, mqttPassInput, true);
         }
-        const msg = `EMQX WSS belum siap (${mqttWssStatus}): menghubungkan ulang broker untuk mengirim ${humanLabel || cmdName}...`;
+        const msg = `EMQX WSS belum siap (${mqttWssStatus}): menghubungkan broker, atau aktifkan "Mode Coba" untuk simulasi tanpa alat.`;
         appendTerminalLog('err', msg);
         showToast(msg);
         return false;
@@ -1425,8 +1516,9 @@ export const App: React.FC = () => {
     if (isPlayingRef.current) {
       stopPlayback();
     }
-    const startAngles: [number, number, number, number] =
-      isLiveTelemetry && !isTelemetryStale && servoAngles && servoAngles.length >= 4
+    const startAngles: [number, number, number, number] = consoleSandboxRef.current
+      ? [...sandboxServoAngles]
+      : isLiveTelemetry && !isTelemetryStale && servoAngles && servoAngles.length >= 4
         ? [
             Math.max(0, Math.min(180, Math.round(servoAngles[0]))),
             Math.max(0, Math.min(180, Math.round(servoAngles[1]))),
@@ -1443,7 +1535,7 @@ export const App: React.FC = () => {
     const msg = `[REC MULAI] Titik awal Arm=[${startAngles.join(',')}]. Gerakkan rel L298N / Arm / Pompa sekarang, lalu klik "Stop Rec".`;
     appendTerminalLog('sys', msg);
     showToast('Perekaman gerakan dimulai! Lakukan gerakan sekarang.');
-  }, [isLiveTelemetry, isTelemetryStale, servoAngles, manualServoAngles, stopPlayback, appendTerminalLog, showToast]);
+  }, [sandboxServoAngles, isLiveTelemetry, isTelemetryStale, servoAngles, manualServoAngles, stopPlayback, appendTerminalLog, showToast]);
 
   const handleStopRecording = useCallback((): RobotRoutine | null => {
     isRecordingRef.current = false;
@@ -1485,7 +1577,7 @@ export const App: React.FC = () => {
     if (isPlayingRef.current) {
       stopPlayback();
     }
-    if (mqttWssStatusRef.current !== 'connected') {
+    if (!consoleSandboxRef.current && mqttWssStatusRef.current !== 'connected') {
       dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Kembali ke Semula');
       return;
     }
@@ -1539,7 +1631,7 @@ export const App: React.FC = () => {
         showToast(msg);
         return;
       }
-      if (mqttWssStatusRef.current !== 'connected' || !actuatorArmed) {
+      if (!consoleSandboxRef.current && (mqttWssStatusRef.current !== 'connected' || !actuatorArmed)) {
         dispatchRobotCommand(targetRoutine.steps[0].cmd, targetRoutine.steps[0].label, targetRoutine.steps[0].params);
         return;
       }
@@ -1550,7 +1642,7 @@ export const App: React.FC = () => {
 
       while (playbackRunIdRef.current === runId) {
         iter++;
-        if (mqttWssStatusRef.current !== 'connected') {
+        if (!consoleSandboxRef.current && mqttWssStatusRef.current !== 'connected') {
           appendTerminalLog('err', '[AUTO] EMQX WSS terputus — pemutaran dihentikan.');
           break;
         }
@@ -1560,7 +1652,7 @@ export const App: React.FC = () => {
         );
 
         for (let i = 0; i < targetRoutine.steps.length; i++) {
-          if (playbackRunIdRef.current !== runId || mqttWssStatusRef.current !== 'connected') break;
+          if (playbackRunIdRef.current !== runId || (!consoleSandboxRef.current && mqttWssStatusRef.current !== 'connected')) break;
           const step = targetRoutine.steps[i];
           setPlaybackStatus({
             mode: loopForever ? 'loop' : 'once',
@@ -1677,10 +1769,14 @@ export const App: React.FC = () => {
         return;
       }
       if (parsed.type === 'status') {
-        const srv = isLiveTelemetry && !isTelemetryStale && servoAngles ? `[${servoAngles.join(',')}]` : `[target ${manualServoAngles.join(',')}]`;
+        const srv = consoleSandboxMode
+          ? `[SIM ${sandboxServoAngles.join(',')}]`
+          : isLiveTelemetry && !isTelemetryStale && servoAngles
+            ? `[${servoAngles.join(',')}]`
+            : `[target ${manualServoAngles.join(',')}]`;
         appendTerminalLog(
           'rx',
-          `STATUS: WSS=${mqttWssStatus} | State=${systemState ?? 'STANDBY'} | Motor=${movementStatus} | Limit=(L:${limitLeft ? 'ACT' : 'CLR'},R:${limitRight ? 'ACT' : 'CLR'}) | Bypass=${ignoreRailLimits ? 'ON' : 'OFF'} | Servo=${srv} | Rec=${isRecordingRoutine ? `ON(${recordingSteps.length})` : `${savedRoutine?.steps.length ?? 0} langkah`} | Loop=${playbackStatus.mode}`
+          `STATUS (${consoleSandboxMode ? 'COBA LOKAL' : 'LIVE ESP32'}): WSS=${mqttWssStatus} | State=${systemState ?? 'STANDBY'} | Motor=${movementStatus}${consoleSandboxMode ? ` (${sandboxRailMm}mm)` : ''} | Limit=(L:${limitLeft ? 'ACT' : 'CLR'},R:${limitRight ? 'ACT' : 'CLR'}) | Bypass=${ignoreRailLimits ? 'ON' : 'OFF'} | Servo=${srv} | Rec=${isRecordingRoutine ? `ON(${recordingSteps.length})` : `${savedRoutine?.steps.length ?? 0} langkah`} | Loop=${playbackStatus.mode}`
         );
         return;
       }
@@ -1740,6 +1836,9 @@ export const App: React.FC = () => {
     },
     [
       terminalInput,
+      consoleSandboxMode,
+      sandboxServoAngles,
+      sandboxRailMm,
       manualServoAngles,
       ignoreRailLimits,
       isLiveTelemetry,
@@ -2051,6 +2150,27 @@ export const App: React.FC = () => {
                     AI.OPT
                   </span>
                 </button>
+
+                {/* Sub Menu 4: Model Konsol Uji Coba Arm & L298N */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentTab('model_console');
+                    if (isMobile) setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 border ${currentTab === 'model_console'
+                      ? 'bg-white/15 text-white shadow-xs font-bold border-l-2 border-l-amber-400 border-y-emerald-300/30 border-r-emerald-300/30'
+                      : 'text-emerald-100/85 border-transparent hover:bg-white/10 hover:text-white'
+                    }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Terminal size={14} className="shrink-0 text-amber-300" />
+                    <span className="truncate">Model Konsol: Uji Arm &amp; Rel</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-amber-400 text-[#0D2E27]">
+                    COBA
+                  </span>
+                </button>
               </div>
             )}
           </div>
@@ -2199,7 +2319,9 @@ export const App: React.FC = () => {
                             ? 'BOTANICAL'
                             : currentTab === 'model_vision'
                               ? 'VISION'
-                              : 'FULL SUITE'}
+                              : currentTab === 'model_console'
+                                ? 'KONSOL UJI'
+                                : 'FULL SUITE'}
                       </span>
                     </NavigationMenuTrigger>
 
@@ -2280,6 +2402,26 @@ export const App: React.FC = () => {
                           </span>
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-sky-100 text-sky-800">
                             TFLITE
+                          </span>
+                        </button>
+                      </NavigationMenuLink>
+
+                      {/* Sub Menu 4: Model Konsol Uji Coba Arm & L298N */}
+                      <NavigationMenuLink asChild>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentTab('model_console')}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer text-left border ${currentTab === 'model_console'
+                              ? 'bg-amber-50 text-[#0D2E27] shadow-xs font-bold border-amber-300'
+                              : 'text-[#102A24]/85 border-transparent hover:bg-[#F2F8F5] hover:text-[#0D2E27]'
+                            }`}
+                        >
+                          <span className="flex items-center gap-2 truncate">
+                            <Terminal size={14} className="shrink-0 text-amber-600" />
+                            <span className="truncate">Model Konsol: Uji Arm &amp; Rel</span>
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 bg-amber-300 text-[#0D2E27]">
+                            COBA
                           </span>
                         </button>
                       </NavigationMenuLink>
@@ -3892,302 +4034,392 @@ export const App: React.FC = () => {
             )}
 
             {/* 6. 4-DOF ROBOT ARM, SLIDER & EMQX WSS CONTROL (#device-control) */}
-            {(currentTab === 'overview' || currentTab === 'all') && (
-              <>
-                <section id="device-control" className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-teal-600 p-5 sm:p-6">
-                  <div className="flex justify-between items-start mb-4 flex-wrap gap-2">
+            {(currentTab === 'overview' || currentTab === 'all' || currentTab === 'model_console') && (
+              <section id="device-control" className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-teal-600 p-5 sm:p-6">
+                {currentTab === 'model_console' && (
+                  <div className="mb-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-50 via-emerald-50 to-sky-50 border border-amber-300 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
-                        Actuator &amp; Robotic Subsystem · L298N + 4-DoF Arm + 5-Ch Flame
+                      <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">
+                        Model Konsol Terpisah · Khusus Uji Coba 4-DoF Arm &amp; L298N
                       </span>
-                      <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
-                        Kontrol Lengan Robot 4-DoF &amp; Scanner Rel — {railPositionMm !== null ? `${railPositionMm} / 1200 mm` : 'Standby'}
-                      </h2>
-                    </div>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                      isLiveTelemetry && !isTelemetryStale
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                    }`}>
-                      <span className={`w-2 h-2 rounded-full ${isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      {systemState
-                        ? `${systemState} · ${movementStatus === 'idle' ? 'READY' : movementStatus.replace(/_/g, ' ').toUpperCase()}`
-                        : movementStatus === 'idle'
-                          ? `${motorDriverInfo} STANDBY`
-                          : `${motorDriverInfo} · ${movementStatus.replace(/_/g, ' ').toUpperCase()}`}
-                    </span>
-                  </div>
-
-                  {/* Visual Rail Track Progress Bar */}
-                  <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-4 mb-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 text-xs font-bold text-[#102A24] mb-2 font-tabular">
-                      <span className={limitLeft ? 'text-rose-600' : 'text-emerald-700'}>
-                        SW1 Left (Z1): {limitLeft ? 'ACTIVE (0mm)' : 'CLEAR'}
-                      </span>
-                      <span className="text-[#0F766E]">
-                        Zona: {zone ?? '--'} · Posisi Rel: {railPositionMm !== null ? `${railPositionMm} mm (${((railPositionMm / 1200) * 100).toFixed(0)}%)` : 'Indeterminate (Standby)'}
-                      </span>
-                      <span className={limitRight ? 'text-rose-600' : 'text-emerald-700'}>
-                        SW2 Right (Z3): {limitRight ? 'ACTIVE (1200mm)' : 'CLEAR'}
+                      <span className="text-xs text-[#102A24]">
+                        {consoleSandboxMode
+                          ? 'Mode Coba Lokal (Simulasi Tanpa Alat) aktif — cocok buat latihan ketik perintah & rekam gerakan.'
+                          : 'Mode Live ESP32 aktif — perintah langsung menggerakkan robot, atau klik "Mode Coba Lokal" untuk simulasi.'}
                       </span>
                     </div>
-                    <div className="h-3 rounded-full bg-white border border-[#CFE2D9] relative overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full transition-all duration-300"
-                        style={{ width: `${railPositionMm !== null ? (railPositionMm / 1200) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Direct EMQX WSS (Port 8084) Connection & Fail-Closed Safety Gate */}
-                  <div className="bg-gradient-to-r from-[#F2F8F5] to-[#EFF7FA] border border-[#CFE2D9] rounded-xl p-4 mb-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${actuatorArmed ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
-                          <ShieldCheck size={18} />
-                        </div>
-                        <div>
-                          <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
-                            EMQX Cloud Direct WSS (Port 8084) &amp; Fail-Closed Safety Gate
-                          </span>
-                          <span className="text-xs text-[#46655D]">
-                            Status WSS: <strong className={`uppercase ${mqttWssStatus === 'connected' ? 'text-emerald-700' : 'text-amber-700'}`}>{mqttWssStatus}</strong> · Kontrol L298N, 4-DoF Arm &amp; Pompa aktif otomatis saat WSS terhubung.
-                          </span>
-                        </div>
-                      </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={handleToggleActuatorLock}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          actuatorArmed
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm hover:bg-emerald-700'
-                            : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                        onClick={handleToggleConsoleSandbox}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                          consoleSandboxMode
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                            : 'bg-white text-[#102A24] border-[#CFE2D9] hover:bg-amber-50'
                         }`}
                       >
-                        {actuatorArmed ? '🔓 KONTROL AKTIF (Klik Kunci)' : '🔒 DIKUNCI (Klik Buka Kunci)'}
+                        {consoleSandboxMode ? '🧪 Mode Coba Lokal (ON)' : '🧪 Coba Tanpa Alat (Simulasi)'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentTab('overview')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold border bg-white hover:bg-[#F2F8F5] text-[#0F766E] border-[#CFE2D9] cursor-pointer"
+                      >
+                        ← Kembali Overview
                       </button>
                     </div>
+                  </div>
+                )}
 
-                    <form onSubmit={handleConnectMqttWss} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                      <input
-                        type="text"
-                        value={mqttHostInput}
-                        onChange={(e) => setMqttHostInput(e.target.value)}
-                        placeholder="Host EMQX (emqxsl.com)"
-                        aria-label="Host Broker EMQX WSS"
-                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
-                      />
-                      <input
-                        type="text"
-                        value={mqttUserInput}
-                        onChange={(e) => setMqttUserInput(e.target.value)}
-                        placeholder="Username EMQX"
-                        aria-label="Username Broker EMQX"
-                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
-                      />
-                      <input
-                        type="password"
-                        value={mqttPassInput}
-                        onChange={(e) => setMqttPassInput(e.target.value)}
-                        placeholder="Password EMQX"
-                        aria-label="Password Broker EMQX"
-                        className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
-                      />
-                      {mqttWssStatus === 'connected' ? (
-                        <button
-                          type="button"
-                          onClick={handleDisconnectMqttWss}
-                          className="px-3 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold cursor-pointer hover:bg-rose-100"
-                        >
-                          Putuskan WSS :8084
-                        </button>
-                      ) : (
-                        <button
-                          type="submit"
-                          disabled={mqttWssStatus === 'connecting'}
-                          className="px-3 py-2 rounded-xl bg-[#0F766E] hover:bg-[#0D5D57] text-white text-xs font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          {mqttWssStatus === 'connecting' ? 'Menghubungkan...' : 'Hubungkan EMQX WSS :8084'}
-                        </button>
-                      )}
-                    </form>
+                <div className="flex justify-between items-start mb-4 flex-wrap gap-2">
+                  <div>
+                    <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wider block">
+                      Actuator &amp; Robotic Subsystem · L298N OUT3/4 (IN3:2, IN4:16) + 4-DoF Arm
+                    </span>
+                    <h2 className="text-lg sm:text-xl font-extrabold text-[#102A24] font-display mt-0.5">
+                      Konsol Terminal Arm 4-DoF &amp; Rel L298N —{' '}
+                      {consoleSandboxMode
+                        ? `${sandboxRailMm} / 1200 mm (Simulasi)`
+                        : railPositionMm !== null
+                          ? `${railPositionMm} / 1200 mm`
+                          : 'Standby'}
+                    </h2>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleToggleConsoleSandbox}
+                      className={`text-xs font-bold px-3 py-1 rounded-full border cursor-pointer transition-colors ${
+                        consoleSandboxMode
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                          : 'bg-white text-[#102A24] border-[#CFE2D9] hover:bg-amber-50'
+                      }`}
+                      title="Aktifkan Mode Coba Lokal bila ingin mengetes perintah terminal tanpa ESP32 menyala"
+                    >
+                      {consoleSandboxMode ? '🧪 MODE COBA LOKAL' : '📡 MODE LIVE ESP32'}
+                    </button>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                      consoleSandboxMode
+                        ? 'bg-amber-50 text-amber-900 border-amber-300'
+                        : isLiveTelemetry && !isTelemetryStale
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${consoleSandboxMode ? 'bg-amber-500 animate-pulse' : isLiveTelemetry && !isTelemetryStale ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      {consoleSandboxMode
+                        ? `SIMULASI · ${movementStatus === 'idle' ? 'SIAP' : movementStatus.replace(/_/g, ' ').toUpperCase()}`
+                        : systemState
+                          ? `${systemState} · ${movementStatus === 'idle' ? 'READY' : movementStatus.replace(/_/g, ' ').toUpperCase()}`
+                          : movementStatus === 'idle'
+                            ? `${motorDriverInfo} STANDBY`
+                            : `${motorDriverInfo} · ${movementStatus.replace(/_/g, ' ').toUpperCase()}`}
+                    </span>
+                  </div>
+                </div>
 
-                    {mqttWssError && (
-                      <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-                        {mqttWssError}
+                {/* Visual Rail Track Progress Bar */}
+                <div className="bg-[#F2F8F5] border border-[#CFE2D9] rounded-xl p-4 mb-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 text-xs font-bold text-[#102A24] mb-2 font-tabular">
+                    <span className={limitLeft ? 'text-rose-600' : 'text-emerald-700'}>
+                      SW1 Left (Z1): {consoleSandboxMode ? (sandboxRailMm <= 0 ? 'SIM ACTIVE' : 'SIM CLEAR') : limitLeft ? 'ACTIVE (0mm)' : 'CLEAR'}
+                    </span>
+                    <span className="text-[#0F766E]">
+                      {consoleSandboxMode
+                        ? `Simulasi Posisi Rel: ${sandboxRailMm} mm (${((sandboxRailMm / 1200) * 100).toFixed(0)}%)`
+                        : `Zona: ${zone ?? '--'} · Posisi Rel: ${railPositionMm !== null ? `${railPositionMm} mm (${((railPositionMm / 1200) * 100).toFixed(0)}%)` : 'Indeterminate (Standby)'}`}
+                    </span>
+                    <span className={limitRight ? 'text-rose-600' : 'text-emerald-700'}>
+                      SW2 Right (Z3): {consoleSandboxMode ? (sandboxRailMm >= 1200 ? 'SIM ACTIVE' : 'SIM CLEAR') : limitRight ? 'ACTIVE (1200mm)' : 'CLEAR'}
+                    </span>
+                  </div>
+                  <div className="h-3 rounded-full bg-white border border-[#CFE2D9] relative overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${consoleSandboxMode ? 'bg-gradient-to-r from-amber-400 to-teal-500' : 'bg-gradient-to-r from-emerald-500 to-teal-600'}`}
+                      style={{
+                        width: `${consoleSandboxMode ? (sandboxRailMm / 1200) * 100 : railPositionMm !== null ? (railPositionMm / 1200) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Direct EMQX WSS (Port 8084) Connection & Fail-Closed Safety Gate */}
+                <div className="bg-gradient-to-r from-[#F2F8F5] to-[#EFF7FA] border border-[#CFE2D9] rounded-xl p-4 mb-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${actuatorArmed ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-amber-50 border-amber-200 text-amber-600'}`}>
+                        <ShieldCheck size={18} />
                       </div>
-                    )}
+                      <div>
+                        <span className="text-xs sm:text-[13px] font-bold text-[#102A24] block">
+                          EMQX Cloud Direct WSS (Port 8084) &amp; Fail-Closed Safety Gate
+                        </span>
+                        <span className="text-xs text-[#46655D]">
+                          Status WSS: <strong className={`uppercase ${mqttWssStatus === 'connected' ? 'text-emerald-700' : 'text-amber-700'}`}>{mqttWssStatus}</strong> · Kontrol L298N, 4-DoF Arm &amp; Pompa aktif otomatis saat WSS terhubung.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleActuatorLock}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        actuatorArmed
+                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm hover:bg-emerald-700'
+                          : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                      }`}
+                    >
+                      {actuatorArmed ? '🔓 KONTROL AKTIF (Klik Kunci)' : '🔒 DIKUNCI (Klik Buka Kunci)'}
+                    </button>
                   </div>
 
-                  {/* Live 4-DoF Arm Servo, Rail Relay & 5-Ch Flame Array */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
-                    <div className="bg-violet-50/50 border border-violet-200 rounded-xl p-3.5">
-                      <span className="text-[11px] font-bold text-violet-800 uppercase tracking-wider block mb-2">
-                        4-DoF Arm Servos (GPIO 13, 14, 15, 5)
-                      </span>
-                      <div className="grid grid-cols-4 gap-1.5 text-center font-tabular">
-                        {['Base J1', 'Shld J2', 'Elbw J3', 'Nozl J4'].map((label, idx) => (
-                          <div key={label} className="bg-white border border-violet-200 rounded-lg p-2">
-                            <span className="text-[11px] text-[#46655D] block">{label}</span>
-                            <span className="text-xs font-extrabold text-violet-900">
-                              {isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[idx] === 'number'
+                  <form onSubmit={handleConnectMqttWss} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <input
+                      type="text"
+                      value={mqttHostInput}
+                      onChange={(e) => setMqttHostInput(e.target.value)}
+                      placeholder="Host EMQX (emqxsl.com)"
+                      aria-label="Host Broker EMQX WSS"
+                      className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
+                    />
+                    <input
+                      type="text"
+                      value={mqttUserInput}
+                      onChange={(e) => setMqttUserInput(e.target.value)}
+                      placeholder="Username EMQX"
+                      aria-label="Username Broker EMQX"
+                      className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
+                    />
+                    <input
+                      type="password"
+                      value={mqttPassInput}
+                      onChange={(e) => setMqttPassInput(e.target.value)}
+                      placeholder="Password EMQX"
+                      aria-label="Password Broker EMQX"
+                      className="px-3 py-2 rounded-xl bg-white border border-[#CFE2D9] text-xs font-mono text-[#102A24]"
+                    />
+                    {mqttWssStatus === 'connected' ? (
+                      <button
+                        type="button"
+                        onClick={handleDisconnectMqttWss}
+                        className="px-3 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold cursor-pointer hover:bg-rose-100"
+                      >
+                        Putuskan WSS :8084
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={mqttWssStatus === 'connecting'}
+                        className="px-3 py-2 rounded-xl bg-[#0F766E] hover:bg-[#0D5D57] text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        {mqttWssStatus === 'connecting' ? 'Menghubungkan...' : 'Hubungkan EMQX WSS :8084'}
+                      </button>
+                    )}
+                  </form>
+
+                  {mqttWssError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                      {mqttWssError}
+                    </div>
+                  )}
+                </div>
+
+                {/* Live 4-DoF Arm Servo, Rail Relay & 5-Ch Flame Array */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+                  <div className="bg-violet-50/50 border border-violet-200 rounded-xl p-3.5">
+                    <span className="text-[11px] font-bold text-violet-800 uppercase tracking-wider block mb-2">
+                      {consoleSandboxMode ? '4-DoF Arm Servos [SIMULASI LOKAL]' : '4-DoF Arm Servos (GPIO 13, 14, 15, 5)'}
+                    </span>
+                    <div className="grid grid-cols-4 gap-1.5 text-center font-tabular">
+                      {['Base J1', 'Shld J2', 'Elbw J3', 'Nozl J4'].map((label, idx) => (
+                        <div key={label} className="bg-white border border-violet-200 rounded-lg p-2">
+                          <span className="text-[11px] text-[#46655D] block">{label}</span>
+                          <span className="text-xs font-extrabold text-violet-900">
+                            {consoleSandboxMode
+                              ? `${sandboxServoAngles[idx]}°`
+                              : isLiveTelemetry && !isTelemetryStale && servoAngles && typeof servoAngles[idx] === 'number'
                                 ? `${servoAngles[idx]}°`
                                 : '--'}
-                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-rose-50/40 border border-rose-200 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
+                        5-Ch Flame Array (Kiri → Kanan)
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${
+                          flameInfo.isFireActive
+                            ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                            : isLiveTelemetry && !isTelemetryStale
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-white text-slate-500 border-slate-200'
+                        }`}
+                      >
+                        {isLiveTelemetry && !isTelemetryStale
+                          ? flameInfo.isFireActive
+                            ? flameInfo.sectorSummary
+                            : 'AMAN'
+                          : 'STANDBY'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[10px]">
+                      {FLAME_CHANNEL_SPECS.map((spec, idx) => {
+                        const hasLive = isLiveTelemetry && !isTelemetryStale && Boolean(flameChannels);
+                        const val = hasLive && flameChannels ? flameChannels[idx] : undefined;
+                        const isFire = typeof val === 'number' && val > 0;
+                        return (
+                          <div
+                            key={spec.key}
+                            title={`${spec.key} · ${spec.label} · GPIO ${spec.gpio} · Yaw ${spec.angleDeg}°`}
+                            className={`rounded-lg p-1.5 border font-bold ${
+                              val === undefined
+                                ? 'bg-white border-slate-200 text-slate-500'
+                                : isFire
+                                  ? 'bg-rose-600 border-rose-700 text-white animate-pulse shadow-xs'
+                                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            }`}
+                          >
+                            <div>{spec.key}</div>
+                            <div className="text-[9px] font-sans font-semibold leading-tight truncate">{spec.shortLabel}</div>
+                            <div className="text-[9px] opacity-85">{val === undefined ? `${spec.angleDeg}°` : isFire ? `API · ${spec.angleDeg}°` : 'OK'}</div>
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-
-                    <div className="bg-rose-50/40 border border-rose-200 rounded-xl p-3.5">
-                      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                        <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider">
-                          5-Ch Flame Array (Kiri → Kanan)
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${
-                            flameInfo.isFireActive
-                              ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
-                              : isLiveTelemetry && !isTelemetryStale
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-white text-slate-500 border-slate-200'
-                          }`}
-                        >
-                          {isLiveTelemetry && !isTelemetryStale
-                            ? flameInfo.isFireActive
-                              ? flameInfo.sectorSummary
-                              : 'AMAN'
-                            : 'STANDBY'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-5 gap-1.5 text-center font-mono text-[10px]">
-                        {FLAME_CHANNEL_SPECS.map((spec, idx) => {
-                          const hasLive = isLiveTelemetry && !isTelemetryStale && Boolean(flameChannels);
-                          const val = hasLive && flameChannels ? flameChannels[idx] : undefined;
-                          const isFire = typeof val === 'number' && val > 0;
-                          return (
-                            <div
-                              key={spec.key}
-                              title={`${spec.key} · ${spec.label} · GPIO ${spec.gpio} · Yaw ${spec.angleDeg}°`}
-                              className={`rounded-lg p-1.5 border font-bold ${
-                                val === undefined
-                                  ? 'bg-white border-slate-200 text-slate-500'
-                                  : isFire
-                                    ? 'bg-rose-600 border-rose-700 text-white animate-pulse shadow-xs'
-                                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                              }`}
-                            >
-                              <div>{spec.key}</div>
-                              <div className="text-[9px] font-sans font-semibold leading-tight truncate">{spec.shortLabel}</div>
-                              <div className="text-[9px] opacity-85">{val === undefined ? `${spec.angleDeg}°` : isFire ? `API · ${spec.angleDeg}°` : 'OK'}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="mt-2 text-[11px] font-medium text-rose-900/90 flex items-center justify-between gap-2 flex-wrap">
-                        <span>{isLiveTelemetry && !isTelemetryStale ? flameInfo.detailLabel : 'GPIO 25 (CH1) s.d. GPIO 33 (CH5)'}</span>
-                      </div>
+                    <div className="mt-2 text-[11px] font-medium text-rose-900/90 flex items-center justify-between gap-2 flex-wrap">
+                      <span>{isLiveTelemetry && !isTelemetryStale ? flameInfo.detailLabel : 'GPIO 25 (CH1) s.d. GPIO 33 (CH5)'}</span>
                     </div>
+                  </div>
 
-                    <div className="bg-teal-50/50 border border-teal-200 rounded-xl p-3.5 flex flex-col justify-between">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#46655D] font-semibold">BMKG Sawah Besar:</span>
-                        <span className="font-bold font-tabular text-[#102A24]">
-                          {bmkgStep
-                            ? `${bmkgStep.temperatureC}°C · ${bmkgStep.windSpeedKmh}km/h`
-                            : 'Menyinkron'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs mt-2">
-                        <span className="text-[#46655D] font-semibold">Pompa (GPIO 23):</span>
-                        <span className={`font-bold ${pumpLockout ? 'text-amber-700' : pumpStatus ? 'text-emerald-700' : 'text-[#102A24]'}`}>
-                          {!isLiveTelemetry || isTelemetryStale || pumpStatus === null
+                  <div className="bg-teal-50/50 border border-teal-200 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[#46655D] font-semibold">BMKG Sawah Besar:</span>
+                      <span className="font-bold font-tabular text-[#102A24]">
+                        {bmkgStep
+                          ? `${bmkgStep.temperatureC}°C · ${bmkgStep.windSpeedKmh}km/h`
+                          : 'Menyinkron'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs mt-2">
+                      <span className="text-[#46655D] font-semibold">Pompa (GPIO 23):</span>
+                      <span className={`font-bold ${pumpLockout ? 'text-amber-700' : (consoleSandboxMode ? sandboxPumpOn : pumpStatus) ? 'text-emerald-700' : 'text-[#102A24]'}`}>
+                        {consoleSandboxMode
+                          ? (sandboxPumpOn ? 'SIM: AKTIF (ON)' : 'SIM: MATI (OFF)')
+                          : !isLiveTelemetry || isTelemetryStale || pumpStatus === null
                             ? 'Standby'
                             : pumpLockout
                               ? 'LOCKOUT (BASAH)'
                               : pumpStatus
                                 ? 'AKTIF (ON)'
                                 : 'MATI (OFF)'}
-                        </span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs mt-2">
+                      <span className="text-[#46655D] font-semibold">Kondisi Onboard:</span>
+                      <span className="font-bold text-[#102A24]">
+                        {isLiveTelemetry && !isTelemetryStale
+                          ? envCondition || systemState || 'NORMAL'
+                          : 'Standby'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Compact Quick Bar + Terminal Kontrol L298N & 4-DoF Arm */}
+                <div className="rounded-2xl overflow-hidden border border-[#1E3B33] bg-[#0B1714] text-emerald-50 shadow-md mb-4">
+                  {/* Terminal Window Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-[#11241F] border-b border-[#1E3B33]">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F]" />
                       </div>
-                      <div className="flex justify-between items-center text-xs mt-2">
-                        <span className="text-[#46655D] font-semibold">Kondisi Onboard:</span>
-                        <span className="font-bold text-[#102A24]">
-                          {isLiveTelemetry && !isTelemetryStale
-                            ? envCondition || systemState || 'NORMAL'
-                            : 'Standby'}
-                        </span>
-                      </div>
+                      <Terminal size={14} className="text-emerald-400 shrink-0" />
+                      <span className="text-xs font-mono font-bold text-emerald-100 truncate">
+                        agrapatha@esp32:~$ · Terminal Kontrol L298N (OUT3/OUT4 · IN3:2 IN4:16) &amp; Arm 4-DoF
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleToggleConsoleSandbox}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border cursor-pointer ${
+                          consoleSandboxMode
+                            ? 'bg-amber-500/25 text-amber-200 border-amber-400/60'
+                            : 'bg-[#0B1714] text-emerald-300 border-[#284B41] hover:bg-[#19352E]'
+                        }`}
+                        title="Toggle Simulasi Lokal (buat nyoba tanpa alat ESP32)"
+                      >
+                        {consoleSandboxMode ? 'MODE: COBA LOKAL' : 'MODE: LIVE ESP32'}
+                      </button>
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                          movementStatus === 'left_command_sent' || movementStatus === 'right_command_sent'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
+                            : 'bg-[#0B1714] text-slate-300 border-[#284B41]'
+                        }`}
+                      >
+                        L298N: {movementStatus === 'left_command_sent' ? 'KIRI (IN3=1)' : movementStatus === 'right_command_sent' ? 'KANAN (IN4=1)' : 'STOP'}
+                      </span>
+                      <label className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#0B1714] border border-[#284B41] text-[10px] font-mono text-amber-300 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={ignoreRailLimits}
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setIgnoreRailLimits(next);
+                            appendTerminalLog('sys', `Bypass Limit Switch L298N: ${next ? 'ON' : 'OFF'}`);
+                          }}
+                          className="accent-amber-400 cursor-pointer"
+                        />
+                        <span>Bypass Limit</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('status')}
+                        className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-sky-300 cursor-pointer"
+                      >
+                        status
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('help')}
+                        className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-emerald-300 cursor-pointer"
+                      >
+                        help
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRunTerminalCommand('clear')}
+                        className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-slate-300 cursor-pointer"
+                      >
+                        clear
+                      </button>
                     </div>
                   </div>
 
-                  {/* Compact Quick Bar + Terminal Kontrol L298N & 4-DoF Arm */}
-                  <div className="rounded-2xl overflow-hidden border border-[#1E3B33] bg-[#0B1714] text-emerald-50 shadow-md mb-4">
-                    {/* Terminal Window Header */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-[#11241F] border-b border-[#1E3B33]">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]" />
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F]" />
-                        </div>
-                        <Terminal size={14} className="text-emerald-400 shrink-0" />
-                        <span className="text-xs font-mono font-bold text-emerald-100 truncate">
-                          agrapatha@esp32:~$ · Terminal Kontrol L298N (OUT3/OUT4 · IN3:2 IN4:16) &amp; Arm 4-DoF
+                  {/* Inline Diagnostics inside Terminal (only if blocked or sandbox info) */}
+                  {(consoleSandboxMode || mqttWssStatus !== 'connected' || !actuatorArmed || systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT' || limitLeft || limitRight) && (
+                    <div className="px-4 py-2 bg-[#14231F] border-b border-[#24433B] flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                      {consoleSandboxMode && (
+                        <span className="text-amber-200 flex items-center gap-1.5">
+                          <span>[MODE COBA LOKAL] Perintah Arm, L298N, Rec &amp; Auto-Loop disimulasikan di browser (tidak dikirim ke ESP32).</span>
+                          <button
+                            type="button"
+                            onClick={handleToggleConsoleSandbox}
+                            className="px-2 py-0.5 rounded bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-400/40 cursor-pointer"
+                          >
+                            Pakai Live ESP32
+                          </button>
                         </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
-                            movementStatus === 'left_command_sent' || movementStatus === 'right_command_sent'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
-                              : 'bg-[#0B1714] text-slate-300 border-[#284B41]'
-                          }`}
-                        >
-                          L298N: {movementStatus === 'left_command_sent' ? 'KIRI (IN3=1)' : movementStatus === 'right_command_sent' ? 'KANAN (IN4=1)' : 'STOP'}
-                        </span>
-                        <label className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#0B1714] border border-[#284B41] text-[10px] font-mono text-amber-300 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={ignoreRailLimits}
-                            onChange={(e) => {
-                              const next = e.target.checked;
-                              setIgnoreRailLimits(next);
-                              appendTerminalLog('sys', `Bypass Limit Switch L298N: ${next ? 'ON' : 'OFF'}`);
-                            }}
-                            className="accent-amber-400 cursor-pointer"
-                          />
-                          <span>Bypass Limit</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => handleRunTerminalCommand('status')}
-                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-sky-300 cursor-pointer"
-                        >
-                          status
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRunTerminalCommand('help')}
-                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-emerald-300 cursor-pointer"
-                        >
-                          help
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRunTerminalCommand('clear')}
-                          className="px-2 py-0.5 rounded-md bg-[#0B1714] hover:bg-[#19352E] border border-[#284B41] text-[10px] font-mono text-slate-300 cursor-pointer"
-                        >
-                          clear
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Inline Diagnostics inside Terminal (only if blocked) */}
-                    {(mqttWssStatus !== 'connected' || !actuatorArmed || systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT' || limitLeft || limitRight) && (
-                      <div className="px-4 py-2 bg-[#14231F] border-b border-[#24433B] flex flex-wrap items-center gap-2 text-[11px] font-mono">
-                        {mqttWssStatus !== 'connected' && (
+                      )}
+                      {!consoleSandboxMode && mqttWssStatus !== 'connected' && (
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => handleConnectMqttWss()}
@@ -4195,35 +4427,43 @@ export const App: React.FC = () => {
                           >
                             [!] WSS {mqttWssStatus} — Klik Hubungkan EMQX :8084
                           </button>
-                        )}
-                        {!actuatorArmed && (
                           <button
                             type="button"
-                            onClick={handleToggleActuatorLock}
-                            className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 cursor-pointer"
+                            onClick={handleToggleConsoleSandbox}
+                            className="px-2.5 py-1 rounded-md bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 cursor-pointer"
                           >
-                            [!] Terkunci — Klik Buka Kunci
+                            🧪 Aktifkan Mode Coba Lokal (Nyoba Tanpa Alat)
                           </button>
-                        )}
-                        {(systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT') && (
-                          <button
-                            type="button"
-                            onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset E-STOP / Fault')}
-                            className="px-2.5 py-1 rounded-md bg-rose-500/25 hover:bg-rose-500/35 text-rose-200 border border-rose-400/50 cursor-pointer"
-                          >
-                            [!] {systemState} — Klik Reset E-STOP
-                          </button>
-                        )}
-                        {(limitLeft || limitRight) && (
-                          <span className="text-amber-300 flex items-center gap-1">
-                            <Info size={12} className="shrink-0" />
-                            <span>
-                              Limit {limitLeft ? 'SW1(L)' : ''}{limitLeft && limitRight ? '+' : ''}{limitRight ? 'SW2(R)' : ''} ACTIVE (LOW) — centang Bypass Limit jika switch belum terpasang / NC.
-                            </span>
+                        </div>
+                      )}
+                      {!actuatorArmed && (
+                        <button
+                          type="button"
+                          onClick={handleToggleActuatorLock}
+                          className="px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 cursor-pointer"
+                        >
+                          [!] Terkunci — Klik Buka Kunci
+                        </button>
+                      )}
+                      {!consoleSandboxMode && (systemState === 'EMERGENCY_STOP' || systemState === 'ALARM_FAULT') && (
+                        <button
+                          type="button"
+                          onClick={() => dispatchRobotCommand('CMD_RESET_EMERGENCY', 'Reset E-STOP / Fault')}
+                          className="px-2.5 py-1 rounded-md bg-rose-500/25 hover:bg-rose-500/35 text-rose-200 border border-rose-400/50 cursor-pointer"
+                        >
+                          [!] {systemState} — Klik Reset E-STOP
+                        </button>
+                      )}
+                      {!consoleSandboxMode && (limitLeft || limitRight) && (
+                        <span className="text-amber-300 flex items-center gap-1">
+                          <Info size={12} className="shrink-0" />
+                          <span>
+                            Limit {limitLeft ? 'SW1(L)' : ''}{limitLeft && limitRight ? '+' : ''}{limitRight ? 'SW2(R)' : ''} ACTIVE (LOW) — centang Bypass Limit jika switch belum terpasang / NC.
                           </span>
-                        )}
-                      </div>
-                    )}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                     {/* Quick 1-Tap Controls Row (L298N Hold/Move, Cam, Pump, Home, E-STOP) */}
                     <div
@@ -4602,8 +4842,11 @@ export const App: React.FC = () => {
                     </div>
                   </div>
                 </section>
+            )}
 
-                {/* 7. REAL-TIME CONDITION NOTIFICATIONS & ADVISORIES (#treatment) */}
+            {/* 7. REAL-TIME CONDITION NOTIFICATIONS & ADVISORIES (#treatment) */}
+            {(currentTab === 'overview' || currentTab === 'all') && (
+              <>
                 <section className="scroll-mt-6 sm:scroll-mt-8 flora-card border-t-[3px] border-t-emerald-500 p-5 sm:p-6" id="treatment">
                   <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                     <div>
