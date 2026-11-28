@@ -18,8 +18,8 @@
 // Compile-time guard: remove or comment this line once real credentials are set.
 #define CREDENTIALS_PLACEHOLDER
 
-#define SECRET_WIFI_SSID        "."
-#define SECRET_WIFI_PASSWORD    "01020304"
+#define SECRET_WIFI_SSID        "YOUR_WIFI_SSID"
+#define SECRET_WIFI_PASSWORD    "YOUR_WIFI_PASSWORD"
 
 /**
  * Root CA Certificate (PEM format) for Railway HTTPS validation on Port 443.

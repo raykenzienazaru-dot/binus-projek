@@ -2,7 +2,7 @@
 
 ## AGRAPATHA — Autonomous Forest Fire & Microclimate Robotic System
 
-AGRAPATHA is an intelligent environmental monitoring, wildfire detection, and autonomous robotic mitigation system combining Edge-AI C kernels (`model_hazard.h`, `grenvis_sensor_model.h`), Canadian Forest Fire Weather Index (FWI) telemetry, direct EMQX Cloud MQTT over TLS (`8883`) & WebSocket (`8084`), a 4-DoF robotic arm + linear carriage with VL53L0X ToF ranging, and MobileNetV2 TFLite visual fire/smoke inference hosted on Railway.
+AGRAPATHA is an intelligent environmental monitoring, wildfire detection, and robotic mitigation system combining Edge-AI C neural network inference (`grenvis_sensor_model.h`), BMKG Sawah Besar weather & CAP XML early-warning fusion, EMQX Cloud MQTT over TLS (`8883`) & WebSocket (`8084`), a 4-DoF robotic arm + L298N (`OUT3 & OUT4`) linear slider with terminal & Teach-and-Repeat control, and MobileNetV2 TFLite visual fire/smoke inference.
 
 ---
 
@@ -11,49 +11,46 @@ AGRAPATHA is an intelligent environmental monitoring, wildfire detection, and au
 ```
                     ┌────────────────────────────────────────────────────────┐
                     │                AGRAPATHA Web Dashboard                 │
-                    │        (React 19 + TypeScript + Vite + WSS :8084)      │
+                    │     (React 19 + TypeScript + Vite + Terminal + WSS)    │
                     └───────┬──────────────────────────┬─────────────────────┘
                             │                          │
              ┌──────────────┘                          └──────────────┐
              ▼                                                        ▼
 ┌──────────────────────────────┐                        ┌──────────────────────────────┐
-│   Wildfire Vision API        │                        │   EMQX Cloud Serverless      │
-│   (FastAPI on Railway)       │                        │   MQTTS :8883 / WSS :8084    │
-│   be-binus-production        │                        │   2-Way Telemetry & Commands │
-│   MobileNetV2 TFLite         │                        └──────────────┬───────────────┘
-└──────────────▲───────────────┘                                       │
+│   Vision & BMKG Gateways     │                        │   EMQX Cloud Serverless      │
+│   Railway MobileNetV2 TFLite │                        │   MQTTS :8883 / WSS :8084    │
+│   + BMKG Sawah Besar (CAP)   │                        │   2-Way Telemetry & Commands │
+└──────────────▲───────────────┘                        └──────────────┬───────────────┘
+               │                                                       │
                │                                                       ▼
-┌──────────────┴───────────────┐   ESP-NOW (CH 0)      ┌──────────────────────────────┐
+┌──────────────┴───────────────┐   ESP-NOW             ┌──────────────────────────────┐
 │   ESP32-CAM Node             │◄─────────────────────►│   NodeMCU ESP32-S Main Node  │
-│   AI-Thinker OV2640          │                       │   DHT22, Soil, MQ-135,       │
-│   POST /predict/fire         │                       │   5-Ch Flame, VL53L0X ToF,   │
-└──────────────────────────────┘                       │   4-DoF Arm, Slider & Pump   │
-                                                       └──────────────────────────────┘
+│   AI-Thinker OV2640          │                       │   DHT22, Soil ADC, 5-Ch Flame│
+│   POST /predict/fire         │                       │   4-DoF Arm, L298N & Pump    │
+└──────────────────────────────┘                       └──────────────────────────────┘
 ```
 
-1. **Dashboard Frontend (`agrapatha-dashboard/`)**: Single-page application providing real-time telemetry gauges, Edge AI C-header analysis, camera capture/gateway frame diagnostics, live EMQX WSS (`:8084`) robot arm & slider control (Fail-Closed Safety Gate), and executable 4-condition mitigation actions (`KERING`, `BASAH`, `KEBAKARAN`, `GAS_BERACUN`).
-2. **Wildfire Vision API (`be-binus` on Railway)**: FastAPI + `ai-edge-litert` MobileNetV2 TFLite service deployed at `https://be-binus-production.up.railway.app`, serving both the web dashboard and `ESP32-CAM`.
-3. **NodeMCU ESP32-S Main Firmware (`firmware/esp32_sensor_main/`)**: Direct-GPIO robotic controller managing DHT22, Capacitive Soil Moisture, MQ-135 Gas, 5-channel flame array, VL53L0X ToF sensor, L298N 3-zone linear slider, pump relay with agricultural lockout/watchdog, 4-DoF servo arm, and bidirectional EMQX MQTTS (`8883`) telemetry/commands.
-4. **Edge AI Kernels**: C-header machine learning models (`model_hazard.h` Random Forest and `grenvis_sensor_model.h` Neural Network) executed directly in memory for instant decision support.
+1. **Dashboard Frontend (`agrapatha-dashboard/`)**: Single-page application providing real-time sensor & 5-channel flame direction monitoring, Botanical ANN analysis, BMKG Sawah Besar forecast & CAP alerts, ESP32-CAM vision inspection, and a Terminal Control console (plus Record / Auto-Loop / Return-to-Origin & Sandbox Test Mode).
+2. **Wildfire Vision API (`be-binus`)**: FastAPI + `ai-edge-litert` MobileNetV2 TFLite service serving both the web dashboard and `ESP32-CAM`.
+3. **NodeMCU ESP32-S Main Firmware (`firmware/esp32_sensor_main/`)**: Direct-GPIO robotic controller managing DHT22, Capacitive Soil Moisture, 5-channel directional flame array, L298N `OUT3 & OUT4` linear slider (`IN3=2, IN4=16`), pump relay with agricultural lockout/watchdog, 4-DoF servo arm (lazy-attach `500–2400 us`), and bidirectional EMQX MQTTS + Serial terminal commands.
+4. **Botanical Neural Kernel (`grenvis_sensor_model.h`)**: Embedded feed-forward ANN (`High` / `Moderate` / `Low`) trained on 9,000 samples of the FLORA Environmental Risk Dataset.
 
 ---
 
 ## 2. Wildfire Vision Subsystem
 
-The `#cameraCapture` section and `ESP32-CAM` node connect directly to the deployed Railway inference backend:
+The `#cameraCapture` section and `ESP32-CAM` node connect to the inference service:
 
 ### Wildfire Classification (`Non-Fire` / `Smoke` / `Fire`)
-- **Deployed Backend:** `https://be-binus-production.up.railway.app`
 - **Health Endpoints:** `GET /health` & `GET /api/v1/health`
 - **Prediction Endpoints:** `POST /api/v1/predict` (Dashboard) & `POST /predict/fire` / `POST /predict` (ESP32-CAM)
-- **Model Architecture:** MobileNetV2 with custom dense classifier head (`agrapatha_vision_mobilenetv2.tflite`, 2.68 MB)
+- **Model Architecture:** MobileNetV2 with custom dense classifier head (`agrapatha_vision_mobilenetv2.tflite`)
 - **Runtime:** `ai-edge-litert` (Python 3.11)
 - **Input Dimensions:** `[1, 224, 224, 3]`, Float32, normalized `[-1.0, 1.0]`
 - **Verified Classes:**
   1. `Non-Fire` / `SAFE` (Healthy canopy)
   2. `Smoke` / `SMOKE` (Smoke plume)
   3. `Fire` / `FIRE` (Surface fire)
-- **Frontend Configuration:** Configurable via `VITE_VISION_API_BASE_URL` (defaults to `https://be-binus-production.up.railway.app`).
 
 ---
 
@@ -70,37 +67,23 @@ When an ESP32-CAM hardware stream is unavailable or unverified, the browser-base
 
 ---
 
-## 4. Hardware Telemetry & EMQX MQTT Infrastructure
+## 4. Hardware Telemetry & MQTT Architecture
 
-- **EMQX Broker Host:** `q2277711.ala.asia-southeast1.emqxsl.com` (EMQX Cloud Serverless Cluster)
-- **Port Adaptation:**
-  - **Browser Dashboard (WSS):** Port `8084` (`wss://q2277711.ala.asia-southeast1.emqxsl.com:8084/mqtt`). Web browsers cannot establish direct TCP connections to port 8883 due to sandbox restrictions, so WebSocket over TLS/SSL is required.
-  - **ESP32 Hardware & Node.js CLI (Native TLS):** Port `8883` (`mqtts://q2277711.ala.asia-southeast1.emqxsl.com:8883`). Microcontrollers use native TCP with TLS encryption (configured via `firmware/esp32_emqx_config.h`).
+- **Protocol Adaptation:**
+  - **Browser Dashboard (WSS):** Port `8084` (`wss://<EMQX_HOST>:8084/mqtt`) for browser WebSocket over TLS/SSL.
+  - **ESP32 Hardware & Node.js CLI (Native TLS):** Port `8883` (`mqtts://<EMQX_HOST>:8883`).
 - **Topic Namespaces:**
-  - Telemetry Stream: `agrapatha/telemetry` (JSON sensor payload)
-  - Interlock & Carriage Commands: `agrapatha/commands`
+  - Telemetry Stream: `agrapatha/telemetry`
+  - Interlock, Arm & Slider Commands: `agrapatha/commands`
   - Health & Node Status: `agrapatha/status`
-- **Authentication:** EMQX Cloud requires Username/Password authentication (Password-Based Auth created in the EMQX Cloud Console).
 
 ---
 
-## 5. Zero-Config Configuration Architecture (No .env Required)
+## 5. Private Credentials & Configuration Policy
 
-Proyek ini menggunakan arsitektur **Single Source of Truth (`src/config/iotConfig.ts`)** yang dirancang khusus untuk IoT:
-- **Zero-Config (Plug & Play):** Tidak membutuhkan file `.env` untuk berjalan. Saat repo di-clone dan dijalankan dengan `npm run dev`, dashboard langsung terhubung ke EMQX Cloud dan Railway API.
-- **Hardware Parity:** Konfigurasi web selaras 100% dengan firmware ESP32 (`firmware/esp32_emqx_config.h`).
-- **Runtime Persistence (LocalStorage):** Parameter broker atau kredensial dapat diedit langsung melalui modal UI di dashboard tanpa perlu restart server atau edit kode.
-- **Optional Env Fallback:** Jika variabel environment (`.env`) ada (misal di pipeline CI/CD), sistem tetap dapat membacanya sebagai prioritas.
-
-| Parameter | Default (Out-of-the-Box) | Deskripsi |
-| :--- | :--- | :--- |
-| `Broker Host` | `q2277711.ala.asia-southeast1.emqxsl.com` | Host EMQX Cloud Serverless |
-| `Browser Port (WSS)` | `8084` | Port WebSocket aman untuk Web Dashboard |
-| `Hardware Port (TLS)` | `8883` | Port MQTTS TCP aman untuk ESP32 |
-| `Username / Password` | `agrapatha` / `agrapatha123` | Kredensial autentikasi EMQX Cloud |
-| `Wildfire API URL` | `https://be-binus-production.up.railway.app` | Backend FastAPI MobileNetV2 (be-binus) |
-| `Topic Telemetry` | `agrapatha/telemetry` & `grenvis/sensor/data` | Topik stream data sensor |
-| `Topic Control` | `agrapatha/commands` & `grenvis/device/control` | Topik kendali motor rel & trigger foto |
+- **No Secrets in Documentation:** Never store `.env` secrets, broker hostnames, Wi-Fi passwords, or MQTT usernames/passwords in `README.md` or public commits.
+- **Local Firmware Setup:** Copy `credentials.example.h` to `credentials.h` (git-ignored) inside `firmware/esp32_sensor_main/` and `firmware/esp32_cam_node/` with your own private Wi-Fi, MQTT, and Root CA credentials before flashing.
+- **Web & Gateway Runtime:** Supply private environment variables via your hosting dashboard (e.g., Vercel / Railway) or local git-ignored `.env` files (`.env.example` contains placeholders only).
 
 ---
 
